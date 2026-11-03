@@ -9,7 +9,7 @@ afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fibe
 async function translator() {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(Translator, Translator.Config({ timeoutMs: 30_000 }))
+  await ctx.plugin(Translator, { timeoutMs: 30_000 })
   return ctx.translator
 }
 

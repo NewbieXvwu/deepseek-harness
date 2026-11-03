@@ -19,8 +19,8 @@ describe('native Flash translation', () => {
   it('keeps anonymous choices available without any model, Loader or Session service', async () => {
     const ctx = new Context()
     cleanups.push(async () => { await ctx.fiber.dispose() })
-    await ctx.plugin(Translator, Translator.Config({}))
-    expect(await ctx.translator.availableProviders()).toEqual(['bing', 'google'])
+    await ctx.plugin(Translator, {})
+    expect(await ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
     expect(await ctx.translator.translate(ctx.translator.resolve({ text: '', targetLanguage: 'zh' }))).toBe('')
     expect(() => ctx.translator.resolve({ text: 'source', targetLanguage: 'zh', provider: 'deepseek-official' }))
       .toThrow(expect.objectContaining({ code: 'TRANSLATION_SESSION_REQUIRED' }))
@@ -30,7 +30,7 @@ describe('native Flash translation', () => {
 
   it('offers both actual native owners with customized settings ids and arbitrary model version names', async () => {
     const b = await paidFixture(cleanups)
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deepseek-account', 'deepseek-official'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'deepseek-account', 'deepseek-official'])
     expect(b.requests).toHaveLength(0)
     expect(b.session?.snapshotEvents()).toEqual([])
     expect(await b.translate('deepseek-account')).toBe('翻译结果')
@@ -116,40 +116,40 @@ describe('native Flash translation', () => {
 
   it('excludes pi-ai ownership, non-native settings paths, unregistered routes and inactive native rows', async () => {
     const b = await paidFixture(cleanups, { officialName: '@deepseek-ai/dsh-llm-pi-ai' })
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deepseek-account'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'deepseek-account'])
     await expect(b.translate('deepseek-official')).rejects.toMatchObject({ code: 'TRANSLATION_UNAVAILABLE' })
     expect(b.requests).toEqual([])
     const account = [...b.ctx.loader.entries()].find(entry => entry.options.id === 'account-custom-id')!
     const directory = b.ctx.llm.listConfigurableProviders()
     const customPath = vi.spyOn(b.ctx.llm, 'listConfigurableProviders').mockReturnValue(directory.map(row =>
       row.provider === 'deepseek-account' ? { ...row, settingsPath: ['profiles', 'gateway'] } : row))
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
     customPath.mockReturnValue(directory.filter(row => row.provider !== 'deepseek-account'))
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
     customPath.mockRestore()
     const originalState = account.fiber!.state
     account.fiber!.state = FiberState.LOADING
-    try { expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google']) }
+    try { expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx']) }
     finally { account.fiber!.state = originalState }
     await account.fiber!.dispose()
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
   })
 
   it('requires configured credentials and exact deepseek-flash catalog identity', async () => {
     const b = await paidFixture(cleanups, { signedIn: false, credentialConfigured: false,
       officialModels: [{ id: 'deepseek-v4-flash', name: 'deepseek-flash' }] })
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
     b.setConfigured(true)
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
     await expect(b.translate('deepseek-official')).rejects.toMatchObject({ code: 'TRANSLATION_UNAVAILABLE' })
     b.setSignedIn(true)
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deepseek-account'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'deepseek-account'])
     b.setConfigured(false)
     const eligible = await paidFixture(cleanups, { withCredentials: false })
     expect(await eligible.ctx.translator.availableProviders()).toContain('deepseek-official')
     expect(await eligible.translate('deepseek-official')).toBe('翻译结果')
     const missingAmbient = await paidFixture(cleanups, { withCredentials: false, ambientConfigured: false })
-    expect(await missingAmbient.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deepseek-account'])
+    expect(await missingAmbient.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'deepseek-account'])
     await expect(missingAmbient.translate('deepseek-official')).rejects.toMatchObject({ code: 'TRANSLATION_UNAVAILABLE' })
     expect(b.requests).toEqual([])
   })
@@ -355,7 +355,7 @@ describe('native Flash translation', () => {
     await expect(b.translate('deepseek-official')).rejects.toMatchObject({ code: 'TRANSLATION_REQUEST_FAILED', message: 'Native Flash translation request failed' })
     expect(b.requests).toEqual([])
     const discovery = vi.spyOn(b.ctx.llm, 'listModels').mockRejectedValueOnce(new Error('private catalog error'))
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deepseek-official'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'deepseek-official'])
     discovery.mockRestore()
   })
 
@@ -425,7 +425,7 @@ describe('native Flash translation', () => {
       if (kind === 'owned') await vi.advanceTimersByTimeAsync(40)
       else caller.abort(reason)
       const result = await outcome
-      if (kind === 'owned') expect(result).toEqual(['bing', 'google'])
+      if (kind === 'owned') expect(result).toEqual(['bing', 'google', 'deeplx'])
       else expect(result).toBe(reason)
     } finally { release.resolve(undefined); vi.useRealTimers() }
   })

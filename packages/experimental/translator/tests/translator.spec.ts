@@ -11,13 +11,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import Translator, { TranslationError, type Config, type TranslationSpec } from '../src/index.ts'
 
 type Reply = (req: IncomingMessage, res: ServerResponse, body: string) => void
+/** Fixture config as the profile stores it: the volatile DeepLX endpoint is written as its value. */
+type RawConfig = Partial<Omit<Config, 'deeplxEndpoint'>> & { readonly deeplxEndpoint?: string }
 const cleanups: Array<() => Promise<void>> = []
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
-async function fixture(reply: Reply, overrides: Partial<Config> = {}) {
+async function fixture(reply: Reply, overrides: RawConfig = {}) {
   const requests: Array<{ url: URL; method: string | undefined; headers: IncomingMessage['headers']; body: string }> = []
   const server = createServer((req, res) => {
     let body = ''
@@ -42,11 +44,12 @@ async function fixture(reply: Reply, overrides: Partial<Config> = {}) {
   const base = `http://127.0.0.1:${address.port}`
   const ctx = new Context()
   cleanups.push(async () => { await ctx.fiber.dispose() })
-  const config = Translator.Config({ googleEndpoint: `${base}/google?client=legacy&q=stale&sl=fr&tl=ja&dt=x&fixture=retained`,
-    bingEndpoint: `${base}/bing?from=fr`, ...overrides })
-  const fiber = ctx.plugin(Translator, config)
+  const raw = { googleEndpoint: `${base}/google?client=legacy&q=stale&sl=fr&tl=ja&dt=x&fixture=retained`,
+    bingEndpoint: `${base}/bing?from=fr`, deeplxEndpoint: `${base}/deeplx?authKey=fixture-key`, ...overrides }
+  const config = Translator.Config(raw)
+  const fiber = ctx.plugin(Translator, raw)
   await fiber
-  return { ctx, fiber, config, requests, translator: ctx.translator }
+  return { ctx, fiber, base, config, requests, translator: ctx.translator }
 }
 
 function json(res: ServerResponse, payload: unknown): void {
@@ -56,6 +59,7 @@ function json(res: ServerResponse, payload: unknown): void {
 
 const googlePayload = [[['你好', 'Hello', null, null], ['，世界。', 'world', null, null]], null, 'en']
 const bingPayload = [{ translations: [{ text: '你好，世界。', to: 'zh-Hans' }] }]
+const deeplxPayload = { code: 200, data: '你好，世界。' }
 
 describe('anonymous translator', () => {
   it('uses explicitly selected Google with automatic detection and combines translated segments', async () => {
@@ -95,6 +99,36 @@ describe('anonymous translator', () => {
     const { translator, requests } = await fixture((_req, res) => { json(res, bingPayload) })
     await translator.translate(translator.resolve({ text: '你好', targetLanguage: 'zh-HK', sourceLanguage: 'zh-CN', provider: 'bing' }))
     expect(Object.fromEntries(requests[0]!.url.searchParams)).toEqual({ from: 'zh-Hans', to: 'zh-Hant', isEnterpriseClient: 'false' })
+  })
+
+  it('sends DeepLX JSON text and language fields and retains its endpoint query', async () => {
+    const { translator, requests } = await fixture((_req, res) => { json(res, deeplxPayload) })
+    const spec = translator.resolve({ text: 'Hello world.', targetLanguage: 'zh', provider: 'deeplx' })
+    expect(spec).toEqual({ text: 'Hello world.', targetLanguage: 'zh', sourceLanguage: 'auto', provider: 'deeplx' })
+    expect(await translator.translate(spec)).toBe('你好，世界。')
+    const request = requests[0]!
+    expect(request.url.pathname).toBe('/deeplx')
+    expect(Object.fromEntries(request.url.searchParams)).toEqual({ authKey: 'fixture-key' })
+    expect(request.method).toBe('POST')
+    expect(request.headers['content-type']).toBe('application/json')
+    expect(JSON.parse(request.body)).toEqual({ text: 'Hello world.', source_lang: 'auto', target_lang: 'ZH-HANS' })
+    expect(request.headers.cookie).toBeUndefined()
+    expect(request.headers.authorization).toBeUndefined()
+  })
+
+  it('maps DeepLX language codes from Traditional Chinese and regional tags', async () => {
+    const { translator, requests } = await fixture((_req, res) => { json(res, deeplxPayload) })
+    await translator.translate(translator.resolve({ text: '你好', targetLanguage: 'zh-HK', sourceLanguage: 'en-US', provider: 'deeplx' }))
+    expect(JSON.parse(requests[0]!.body)).toEqual({ text: '你好', source_lang: 'EN-US', target_lang: 'ZH-HANT' })
+    await translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'pt-br', sourceLanguage: 'ja', provider: 'deeplx' }))
+    expect(JSON.parse(requests[1]!.body)).toEqual({ text: 'hello', source_lang: 'JA', target_lang: 'PT-BR' })
+  })
+
+  it.each([null, [], [1], {}, { code: 200 }, { data: 1 }, { data: null }])('rejects malformed DeepLX response %j', async (payload) => {
+    const { translator, requests } = await fixture((_req, res) => { json(res, payload) })
+    await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh', provider: 'deeplx' })))
+      .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_INVALID_RESPONSE' }))
+    expect(requests).toHaveLength(1)
   })
 
   it('returns empty text locally and accepts the exact UTF-16 limit', async () => {
@@ -202,12 +236,18 @@ describe('anonymous translator', () => {
   })
 
   it('validates endpoint URLs and numerical limits before activation', () => {
-    expect(Translator.Config({})).toMatchObject({ provider: 'bing', maxTextChars: 4000, timeoutMs: 10000,
+    const defaults = Translator.Config({})
+    expect(defaults).toMatchObject({ provider: 'bing', maxTextChars: 4000, timeoutMs: 10000,
       googleEndpoint: 'https://translate.googleapis.com/translate_a/single',
       bingEndpoint: 'https://edge.microsoft.com/translate/translatetext' })
+    expect(defaults.deeplxEndpoint.get()).toBe('http://127.0.0.1:22330/translate')
+    expect(Translator.Config({ provider: 'deeplx' }).provider).toBe('deeplx')
     for (const googleEndpoint of ['not a URL', 'ftp://provider.invalid/', 'https://user:password@provider.invalid/', 'https://provider.invalid/#fragment']) {
       expect(() => Translator.Config({ googleEndpoint })).toThrow()
     }
+    // The panel-edited endpoint carries no schema transform: schemastery cannot carry one through the
+    // settings form projection, so an unusable address is rejected when a request reads it.
+    expect(Translator.Config({ deeplxEndpoint: 'ftp://deeplx.invalid/' }).deeplxEndpoint.get()).toBe('ftp://deeplx.invalid/')
     for (const field of ['timeoutMs', 'maxTextChars', 'maxResponseBytes']) {
       expect(() => Translator.Config({ [field]: 0 })).toThrow()
     }
@@ -232,5 +272,35 @@ describe('anonymous translator', () => {
     expect(requests[0]!.method).toBe('POST')
     expect(requests[0]!.url.searchParams.get('to')).toBe('zh-Hans')
     expect(JSON.parse(requests[0]!.body)).toEqual(['Hello world.'])
+  })
+
+  it('retargets DeepLX through a live configuration change without remounting', async () => {
+    const { base, requests } = await fixture((_req, res) => { json(res, deeplxPayload) })
+    const root = await mkdtemp(join(tmpdir(), 'dsh-translator-deeplx-'))
+    cleanups.push(async () => { await rm(root, { recursive: true, force: true }) })
+    const path = join(root, 'cordis.yml')
+    await writeFile(path, JSON.stringify([{ id: 'translator', name: 'cordis:translator', config: { deeplxEndpoint: `${base}/deeplx` } }]))
+    const ctx = await boot('translator-deeplx', path, [], (host) => {
+      host.loader.builtins.translator = Translator
+    })
+    cleanups.push(async () => { await ctx.fiber.dispose() })
+    const translate = () => ctx.translator.translate(ctx.translator.resolve({ text: 'Hello world.', targetLanguage: 'zh', provider: 'deeplx' }))
+    expect(await translate()).toBe('你好，世界。')
+    expect(requests[0]!.url.pathname).toBe('/deeplx')
+    const entry = [...ctx.loader.entries()].find(row => row.options.id === 'translator')
+    if (entry?.fiber === undefined) throw new Error('Missing translator Loader row')
+    await entry.update({ config: { deeplxEndpoint: `${base}/deeplx-alt` } })
+    await ctx.loader.await()
+    expect([...ctx.loader.entries()].find(row => row.options.id === 'translator')?.fiber).toBe(entry.fiber)
+    expect(await translate()).toBe('你好，世界。')
+    expect(requests[1]!.url.pathname).toBe('/deeplx-alt')
+  })
+
+  it('rejects an unusable DeepLX address before dispatch and names no address in the failure', async () => {
+    const { translator, requests } = await fixture(() => { throw new Error('an unusable endpoint must not dispatch') },
+      { provider: 'deeplx', deeplxEndpoint: 'https://user:secret@deeplx.invalid/' })
+    await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh' })))
+      .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_ENDPOINT_INVALID' }))
+    expect(requests).toHaveLength(0)
   })
 })

@@ -1,9 +1,9 @@
 /** Anonymous text translation with optional durable provider-independent Session results. */
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context, Service, type Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { TranslationProvider, TranslationRequest, TranslationSpec } from './types.ts'
 import { TranslationError } from './error.ts'
-import { anonymousRecipe, translateText } from './provider.ts'
+import { anonymousRecipe, endpoint, isAnonymousProvider, translateText } from './provider.ts'
 import { TranslationStorage } from './storage.ts'
 import { addAbortListener } from 'node:events'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
@@ -29,6 +29,8 @@ export interface Config {
   googleEndpoint: string
   /** Bing-compatible Microsoft Edge browser translation endpoint. */
   bingEndpoint: string
+  /** DeepLX-compatible translation endpoint, editable from the reasoning-translation panel and checked when a request uses it. */
+  deeplxEndpoint: Volatile<string>
   /** Deadline covering the request and complete response body, in milliseconds. */
   timeoutMs: number
   /** Maximum UTF-16 code units per request; at least two to admit one supplementary-plane character. */
@@ -41,20 +43,13 @@ export interface Config {
   deepseekMaxOutputTokens: number
 }
 
-function endpoint(value: string): string {
-  const url = new URL(value)
-  if (!['http:', 'https:'].includes(url.protocol) || url.username !== '' || url.password !== '' || url.hash !== '') {
-    throw new Error('Translation endpoint must be an HTTP(S) URL without credentials or a fragment')
-  }
-  return url.href
-}
-
 /** One Host service with explicit routing, cancellation and quiescent unload. */
 export default class Translator extends Service {
   static Config = z.object({
-    provider: z.union(['google', 'bing', 'deepseek-account', 'deepseek-official'] as const).default('bing'),
+    provider: z.union(['google', 'bing', 'deeplx', 'deepseek-account', 'deepseek-official'] as const).default('bing'),
     googleEndpoint: z.transform(z.string(), endpoint).default('https://translate.googleapis.com/translate_a/single'),
     bingEndpoint: z.transform(z.string(), endpoint).default('https://edge.microsoft.com/translate/translatetext'),
+    deeplxEndpoint: z.string().default('http://127.0.0.1:22330/translate').volatile(),
     timeoutMs: z.natural().min(1).max(2_147_483_647).default(10_000),
     maxTextChars: z.natural().min(2).default(4_000),
     maxResponseBytes: z.natural().min(1).default(1024 * 1024),
@@ -102,7 +97,8 @@ export default class Translator extends Service {
     const base = { text: request.text, targetLanguage: request.targetLanguage, sourceLanguage: request.sourceLanguage ?? 'auto' }
     switch (provider) {
       case 'google':
-      case 'bing': return { ...base, provider, ...request.sessionId === undefined ? {} : { sessionId: request.sessionId } }
+      case 'bing':
+      case 'deeplx': return { ...base, provider, ...request.sessionId === undefined ? {} : { sessionId: request.sessionId } }
       case 'deepseek-account':
       case 'deepseek-official': {
         if (request.sessionId === undefined) throw new TranslationError('TRANSLATION_SESSION_REQUIRED', 'Paid translation requires a durable Session')
@@ -125,7 +121,7 @@ export default class Translator extends Service {
     this.assertTextLimit(spec.text)
     const combined = this.signal(signal)
     const identity: TranslationIdentity = { provider: spec.provider, text: spec.text, sourceLanguage: spec.sourceLanguage,
-      targetLanguage: spec.targetLanguage, recipe: spec.provider === 'google' || spec.provider === 'bing'
+      targetLanguage: spec.targetLanguage, recipe: isAnonymousProvider(spec.provider)
         ? anonymousRecipe(spec.provider, this.config) : deepseekRecipe(this.config) }
     const inSession = (id: SessionId) => this.storage.run(id, identity, combined, async (log) => {
       switch (spec.provider) {
@@ -133,7 +129,8 @@ export default class Translator extends Service {
         case 'deepseek-official':
           return translateWithDeepSeek(this.ctx, spec, this.config, combined, (work) => { this.track(work) }, log, identity)
         case 'google':
-        case 'bing': {
+        case 'bing':
+        case 'deeplx': {
           const requestSeq = await log.request(identity)
           combined.throwIfAborted()
           const text = await translateText(spec, this.config, combined)
@@ -148,7 +145,8 @@ export default class Translator extends Service {
     const task = Promise.resolve().then(() => {
       switch (spec.provider) {
         case 'google':
-        case 'bing': return spec.sessionId === undefined ? translateText(spec, this.config, combined) : inSession(spec.sessionId)
+        case 'bing':
+        case 'deeplx': return spec.sessionId === undefined ? translateText(spec, this.config, combined) : inSession(spec.sessionId)
         case 'deepseek-account':
         case 'deepseek-official': return inSession(spec.sessionId)
         /* v8 ignore next -- TranslationSpec has a closed provider union resolved before same-process dispatch. */

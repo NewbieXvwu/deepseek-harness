@@ -10,6 +10,12 @@ export interface CotTranslationPreferences {
   targetLanguage: string
 }
 
+/** The translator namespace section this panel edits. */
+export interface DeeplxEndpointPreference {
+  /** DeepLX endpoint that receives reasoning when the reader selects DeepLX. */
+  deeplxEndpoint: string
+}
+
 /** Authoritative Host metadata read before any reasoning is submitted. */
 export interface CotTranslationSnapshot {
   /** Maximum UTF-16 text length accepted by one translation request. */

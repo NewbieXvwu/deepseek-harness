@@ -1,8 +1,7 @@
 /** Durable reasoning translation through a real optional profile and recorded model Session. */
 import { once } from 'node:events'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { pluginRecordOf, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
@@ -27,6 +26,9 @@ const GOOGLE_TRANSLATION = '用户让我只回复一个词。我会照做。'
 const BING_TRANSLATION = '用户要求我回复一个单词。'
 const JAPANESE_TRANSLATION = 'ユーザーは単語一つでの返答を求めています。'
 const GERMAN_TRANSLATION = 'Der Nutzer möchte eine Antwort mit einem einzigen Wort.'
+const DEEPLX_TRANSLATION = 'Der Benutzer möchte, dass ich mit einem einzigen Wort antworte.'
+/** Only the panel-entered address answers with this text, so a request reaching it proves the retarget landed. */
+const DEEPLX_PANEL_TRANSLATION = 'Der Nutzer möchte eine Wortantwort, über die Panel-Adresse übersetzt.'
 
 /** Translation records are the only additions permitted beside the recorded conversation. */
 function isTranslationRecord(event: SessionEvent): boolean {
@@ -35,7 +37,7 @@ function isTranslationRecord(event: SessionEvent): boolean {
 }
 
 interface TranslationCall {
-  provider: 'google' | 'bing'
+  provider: 'google' | 'bing' | 'deeplx'
   text: string
   target: string
   hasAuthorization: boolean
@@ -57,7 +59,6 @@ async function requestBody(request: IncomingMessage): Promise<string> {
 
 it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen and browser reload, changes provider and language, retains originals on failure and cancels uncached requests', async () => {
   const resources: { scaffold?: WebScaffold; browser?: Browser } = {}
-  const root = await mkdtemp(join(tmpdir(), 'dsh-cot-translation-'))
   const calls: TranslationCall[] = []
   const fixtureErrors: unknown[] = []
   const requests: Promise<void>[] = []
@@ -67,7 +68,8 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   let holdNextResponse = false
   async function respond(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? '/', 'http://translation.test')
-    const provider = url.pathname === '/google' ? 'google' : 'bing'
+    const provider: TranslationCall['provider'] = url.pathname === '/google' ? 'google'
+      : url.pathname.startsWith('/deeplx') ? 'deeplx' : 'bing'
     let text: string
     let target: string
     if (provider === 'google') {
@@ -80,6 +82,20 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
       expect(body.get('dt')).toBe('t')
       text = body.get('q') ?? ''
       target = body.get('tl') ?? ''
+    } else if (provider === 'deeplx') {
+      expect(request.method).toBe('POST')
+      expect(request.headers['content-type']).toBe('application/json')
+      const body: unknown = JSON.parse(await requestBody(request))
+      if (typeof body !== 'object' || body === null || !('text' in body) || !('source_lang' in body) || !('target_lang' in body)) {
+        throw new Error('DeepLX must receive text and both language fields')
+      }
+      const submitted: unknown = body.text, sourceLang: unknown = body.source_lang, targetLang: unknown = body.target_lang
+      if (typeof submitted !== 'string' || typeof sourceLang !== 'string' || typeof targetLang !== 'string') {
+        throw new Error('DeepLX fields must be strings')
+      }
+      expect(sourceLang).toBe('auto')
+      text = submitted
+      target = targetLang
     } else {
       expect(url.pathname).toBe('/bing')
       expect(request.method).toBe('POST')
@@ -109,12 +125,13 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
       return
     }
     if (fail) { response.writeHead(503); response.end(); return }
-    const translated = target === 'ja' ? JAPANESE_TRANSLATION : target === 'de' ? GERMAN_TRANSLATION
-      : provider === 'google' ? GOOGLE_TRANSLATION : BING_TRANSLATION
+    const translated = url.pathname === '/deeplx-panel' ? DEEPLX_PANEL_TRANSLATION : provider === 'deeplx' ? DEEPLX_TRANSLATION
+      : target === 'ja' ? JAPANESE_TRANSLATION : target === 'de' ? GERMAN_TRANSLATION : provider === 'google' ? GOOGLE_TRANSLATION
+        : BING_TRANSLATION
     response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify(provider === 'google'
-      ? [[[translated, text, null, null]], null, 'en']
-      : [{ translations: [{ text: translated, to: target }] }]))
+    const payload = provider === 'google' ? [[[translated, text, null, null]], null, 'en']
+      : provider === 'deeplx' ? { code: 200, data: translated } : [{ translations: [{ text: translated, to: target }] }]
+    response.end(JSON.stringify(payload))
   }
   const server = createServer((request, response) => {
     requests.push(respond(request, response).catch((error: unknown) => {
@@ -134,7 +151,6 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
     server.closeAllConnections()
     await closed.catch((error: unknown) => failures.push(error))
     await Promise.all(requests).catch((error: unknown) => failures.push(error))
-    await rm(root, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
     if (failures.length > 0) throw new AggregateError(failures, 'CoT translation teardown failed')
   })
   server.listen(0, '127.0.0.1')
@@ -142,15 +158,8 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('Expected an allocated loopback listener')
   const origin = `http://127.0.0.1:${address.port}`
-  const overlay = join(root, 'translator.patch.yml')
-  await writeFile(overlay, `- id: translator\n  config: ${JSON.stringify({
-    googleEndpoint: `${origin}/google`, bingEndpoint: `${origin}/bing`,
-    // The provider deadline must exceed the cancellation observation's 10-second bound.
-    timeoutMs: 120_000,
-  })}\n`)
   const scaffold = await launchWebScaffold({
     profile: { packages: [{ dir: BUNDLE }] },
-    extraOverlayPath: overlay,
     replayFixture: FIXTURE,
     // Translation records are asserted separately from the unchanged borrowed conversation.
     compareReplaySession: false,
@@ -203,12 +212,23 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   expect(await toggle.getAttribute('aria-checked')).toBe('false')
   await toggle.click()
   await expect.poll(() => toggle.getAttribute('aria-checked'), { timeout: PLUGIN_TOGGLE_SETTLE_MS }).toBe('true')
+  // The endpoints belong to the editable profile document: a patch overlay replaces the entry's whole config,
+  // which would refuse the panel's own DeepLX address write.
+  const translatorEntry = scaffold.ctx.configEditor.entries().find(row => row.options.id === 'translator')
+  if (translatorEntry === undefined) throw new Error('The enabled bundle leaves no translator profile entry')
+  await scaffold.ctx.configEditor.edit(translatorEntry, () => ({
+    googleEndpoint: `${origin}/google`, bingEndpoint: `${origin}/bing`, deeplxEndpoint: `${origin}/deeplx`,
+    // The provider deadline must exceed the cancellation observation's 10-second bound.
+    timeoutMs: 120_000,
+  }))
   await card.getByRole('button').first().click()
   const provider = panel.getByLabel('翻译服务', { exact: true })
   const target = panel.getByLabel('目标语言', { exact: true })
   await provider.waitFor()
   expect(await provider.inputValue()).toBe('bing')
   expect(await target.inputValue()).toBe('auto')
+  const endpoint = panel.getByLabel('DeepLX 地址', { exact: true })
+  expect(await endpoint.inputValue()).toBe(`${origin}/deeplx`)
   await panel.getByText('展开的思考内容会发送给所选翻译服务，可能包含私有代码或对话细节。', { exact: true }).waitFor()
   await panel.getByText(`v${bundleVersion}`, { exact: true }).waitFor()
   await panel.getByText(bundleVersion, { exact: true }).waitFor()
@@ -216,7 +236,7 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await panel.locator('[data-detail-document]').getByRole('img', { name: '展开的思考行从英文翻译成中文，并显示“查看原文”按钮', exact: true }).waitFor()
   await compareOrRefreshGolden(join(EXPECTED, 'preferences.expected.md'),
     await captureStableAria(settings, '[data-plugin-panel]', scaffold.workspaceCwd, {
-      replacements: [[BUNDLE, '{{bundle}}'], [bundleVersion, '{{version}}']],
+      replacements: [[BUNDLE, '{{bundle}}'], [bundleVersion, '{{version}}'], [origin, '{{origin}}']],
     }), MODE)
   expect(calls).toEqual([])
   await reasoning.locator('[data-disclosure-row]').first().click()
@@ -345,6 +365,24 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await expect.poll(() => body.getAttribute('data-translation-state')).toBe('ready')
   expect(calls).toHaveLength(6)
 
+  await provider.selectOption('deeplx')
+  await save.click()
+  await expect.poll(() => save.isDisabled()).toBe(true)
+  await body.getByText(DEEPLX_TRANSLATION, { exact: true }).waitFor()
+  await expect.poll(() => body.getAttribute('data-translation-state')).toBe('ready')
+  expect(calls).toHaveLength(7)
+  expect(calls[6]).toEqual({ provider: 'deeplx', text: ORIGINAL, target: 'DE', hasAuthorization: false, hasCookie: false })
+
+  // The open disclosure answers from its own cache, so the retarget is saved with a new target language.
+  await endpoint.fill(`${origin}/deeplx-panel`)
+  await target.fill('fr')
+  await save.click()
+  await expect.poll(() => save.isDisabled()).toBe(true)
+  await body.getByText(DEEPLX_PANEL_TRANSLATION, { exact: true }).waitFor()
+  await expect.poll(() => body.getAttribute('data-translation-state')).toBe('ready')
+  expect(calls).toHaveLength(8)
+  expect(calls[7]).toEqual({ provider: 'deeplx', text: ORIGINAL, target: 'FR', hasAuthorization: false, hasCookie: false })
+
   await panel.getByRole('button', { name: '返回 实验性插件', exact: true }).click()
   await toggle.click()
   await expect.poll(() => toggle.getAttribute('aria-checked'), { timeout: PLUGIN_TOGGLE_SETTLE_MS }).toBe('false')
@@ -353,7 +391,7 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await reasoning.locator('[data-disclosure-row]').first().click()
   await reasoning.locator('[data-disclosure-row]').first().click()
   await reasoning.getByText(ORIGINAL, { exact: true }).waitFor()
-  expect(calls).toHaveLength(6)
+  expect(calls).toHaveLength(8)
   const completedEvents = await readPersistedEvents(scaffold, sessionId)
   expect(completedEvents.filter(event => !isTranslationRecord(event))).toEqual(recordedEvents)
   expect((await scaffold.ctx.sessionPersistence.stat(sessionId))?.header).toEqual(recordedHeader)
@@ -362,13 +400,15 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   const translationRecords = completedEvents.filter(isTranslationRecord)
   const requestsBySeq = new Map(translationRecords.flatMap(event => pluginRecordOf(event)?.type === 'plugin:translator/request' ? [[event.seq, event] as const] : []))
   const results = translationRecords.filter(event => pluginRecordOf(event)?.type === 'plugin:translator/result')
-  expect(requestsBySeq.size).toBe(6)
-  expect(results).toHaveLength(4)
+  expect(requestsBySeq.size).toBe(8)
+  expect(results).toHaveLength(6)
   expect(results.map(event => event.data)).toEqual([
     { requestSeq: translationRecords[0]?.seq, text: BING_TRANSLATION },
     { requestSeq: translationRecords[2]?.seq, text: GOOGLE_TRANSLATION },
     { requestSeq: translationRecords[5]?.seq, text: JAPANESE_TRANSLATION },
     { requestSeq: translationRecords[8]?.seq, text: GERMAN_TRANSLATION },
+    { requestSeq: translationRecords[10]?.seq, text: DEEPLX_TRANSLATION },
+    { requestSeq: translationRecords[12]?.seq, text: DEEPLX_PANEL_TRANSLATION },
   ])
   for (const result of results) {
     const data = pluginRecordOf(result)?.data
@@ -379,7 +419,8 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
     expect(request?.seq).toBeLessThan(result.seq)
   }
   const modelLog = JSON.stringify(recordedModelHistory)
-  for (const translated of [GOOGLE_TRANSLATION, BING_TRANSLATION, JAPANESE_TRANSLATION, GERMAN_TRANSLATION]) {
+  for (const translated of [GOOGLE_TRANSLATION, BING_TRANSLATION, JAPANESE_TRANSLATION, GERMAN_TRANSLATION,
+    DEEPLX_TRANSLATION, DEEPLX_PANEL_TRANSLATION]) {
     expect(modelLog).not.toContain(translated)
   }
   expect(fixtureErrors).toEqual([])

@@ -8,7 +8,7 @@ import type { InjectParams, StoredEntry } from '@deepseek-ai/dsh-client-ui-slots
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import { RemoteError, type RemoteResult, type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
-import type { CotTranslationPreferences, CotTranslationSnapshot } from '../src/preferences.ts'
+import type { CotTranslationPreferences, CotTranslationSnapshot, DeeplxEndpointPreference } from '../src/preferences.ts'
 import type { TranslationBodyInjected } from '../src/client/TranslationBody.tsx'
 import type { TranslationFormInjected } from '../src/client/preferences-form.ts'
 import { inject, mountTranslation } from '../src/client/mount.ts'
@@ -38,14 +38,17 @@ async function fixture(failure = false, preferences: CotTranslationPreferences =
   const translate = vi.fn(async () => ({ ok: true, value: 'translated' }))
   ctx.provide('remote.cotTranslation', { limits, translate } as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
-  const scope = stubConfigForm<CotTranslationPreferences>()
-  ctx.provide('configForms', { get: (name: string) => { expect(name).toBe('cot-translation'); return scope.scope } } as never)
+  const scope = stubConfigForm<CotTranslationPreferences>(), endpoint = stubConfigForm<DeeplxEndpointPreference>()
+  ctx.provide('configForms', { get: (name: string) => {
+    if (name === 'translator') return endpoint.scope
+    expect(name).toBe('cot-translation'); return scope.scope
+  } } as never)
   await ctx.plugin(SlotRegistry)
   ctx.slots.register({ name: 'root', children: {
     'conversation.chat.reasoning.body': { kind: 'single', scope: 'session' },
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
   } } as never, () => null)
-  return { ctx, limits, translate, unmount, scope, listeners,
+  return { ctx, limits, translate, unmount, scope, endpoint, listeners,
     setCatalog: (value: CotTranslationSnapshot) => { catalog = value },
     invalidate: () => { for (const listener of listeners.get('settings/document-updated') ?? []) listener() },
     emitEvent: (event: string) => { for (const listener of listeners.get(event) ?? []) listener() } }
@@ -67,7 +70,7 @@ function injectReasoning(entry: StoredEntry, sessionId: SessionId): Record<strin
   return inject(sessionId)
 }
 
-it.each(['bing', 'google'] as const)('binds %s requests to each reasoning Session and overrides a supplied source id', async (provider) => {
+it.each(['bing', 'google', 'deeplx'] as const)('binds %s requests to each reasoning Session and overrides a supplied source id', async (provider) => {
   const b = await fixture(false, { provider, targetLanguage: 'ja' })
   try {
     const dispose = await mountTranslation(b.ctx, contribution)
@@ -113,6 +116,7 @@ it('registers translated reasoning and preferences, adopts accepted choices, and
     expect(b.ctx.slots.entries('conversation.chat.reasoning.body')).toHaveLength(0)
     expect(b.ctx.slots.entries('plugins.bundle.config')).toHaveLength(0)
     expect(b.scope.listenerCount()).toBe(0)
+    expect(b.endpoint.listenerCount()).toBe(0)
     expect(b.listeners.size).toBe(0)
     expect(b.unmount).toHaveBeenCalledOnce()
   } finally { await b.ctx.fiber.dispose() }
@@ -125,6 +129,7 @@ it.each(['limits', 'registration'])('rolls back the Remote when %s fails', async
     await expect(mountTranslation(b.ctx, contribution)).rejects.toThrow()
     expect(b.unmount).toHaveBeenCalledOnce()
     expect(b.scope.listenerCount()).toBe(0)
+    expect(b.endpoint.listenerCount()).toBe(0)
   } finally { await b.ctx.fiber.dispose() }
 })
 
@@ -219,6 +224,7 @@ it.each(['resolve', 'reject'] as const)('cancels setup, joins the pending read, 
     await disposing
     expect(b.ctx.slots.entries('conversation.chat.reasoning.body')).toHaveLength(0)
     expect(b.scope.listenerCount()).toBe(0)
+    expect(b.endpoint.listenerCount()).toBe(0)
     expect(b.listeners.size).toBe(0)
     expect(b.unmount).toHaveBeenCalledOnce()
   } finally {

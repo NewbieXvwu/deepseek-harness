@@ -17,7 +17,13 @@
 - combobox "翻译服务":
   - option "Bing"
   - option "Google"
+  - option "DeepLX"
   - option "DeepSeek Flash · 账号（付费）" [selected]
+- text: DeepLX 地址
+- textbox "DeepLX 地址":
+  - /placeholder: ""
+  - text: http://127.0.0.1:22330/translate
+- paragraph: 填写可访问的 DeepLX POST /translate 端点；留空则使用本部署配置的端点
 - text: 目标语言 已覆盖
 - button "恢复默认"
 - textbox "目标语言":

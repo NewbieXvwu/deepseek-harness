@@ -26,6 +26,12 @@ function fixture(preferences: Partial<CotTranslationPreferences> = {}) {
   return { ctx, controller, resolve, translate, configure, availableProviders, resolveAgent, config }
 }
 
+it.each(['bing', 'google', 'deeplx'] as const)('dispatches the accepted %s route without falling back', async (provider) => {
+  const b = fixture({ provider }), signal = new AbortController().signal
+  expect(await b.controller.translate({ text: 'original', targetLanguage: 'zh', provider }, signal)).toBe('translated')
+  expect(b.resolve).toHaveBeenCalledWith({ text: 'original', targetLanguage: 'zh', provider })
+})
+
 it('exposes configured limits without translating and uses explicit provider and target', async () => {
   const b = fixture({ provider: 'google' }), request = {
     text: 'original', targetLanguage: 'zh', provider: 'google' as const, sessionId: SessionId('source'),
@@ -132,6 +138,7 @@ it.each([
   { accepted: 'bing' as const, requested: 'google' as const },
   { accepted: 'google' as const, requested: 'bing' as const },
   { accepted: 'bing' as const, requested: 'deepseek-account' as const },
+  { accepted: 'bing' as const, requested: 'deeplx' as const },
   { accepted: 'bing' as const, requested: 'deepseek-official' as const },
   { accepted: 'deepseek-account' as const, requested: 'deepseek-official' as const },
   { accepted: 'deepseek-official' as const, requested: 'bing' as const },

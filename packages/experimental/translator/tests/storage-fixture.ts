@@ -12,9 +12,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Translator from '../src/index.ts'
+import type { AnonymousTranslationProvider } from '../src/types.ts'
 
 /** One external anonymous request, with only the relevant protocol facts. */
-export interface StorageWireCall { provider: 'bing' | 'google'; path: string; text: string; source: string; target: string }
+export interface StorageWireCall { provider: AnonymousTranslationProvider; path: string; text: string; source: string; target: string }
 /** Fixture-owned response control; no Host or model requests are intercepted. */
 export interface StorageFixtureOptions {
   reply?: (call: StorageWireCall, response: ServerResponse) => void | Promise<void>
@@ -25,9 +26,20 @@ export interface StorageFixtureOptions {
 /** JSON response matching the selected external translation protocol. */
 export function storageReply(call: StorageWireCall, response: ServerResponse, text = 'Stored translation'): void {
   response.writeHead(200, { 'content-type': 'application/json' })
-  response.end(JSON.stringify(call.provider === 'bing'
-    ? [{ translations: [{ text, to: call.target }] }]
-    : [[[text, call.text, null, null]], null, 'en']))
+  const payload = call.provider === 'bing' ? [{ translations: [{ text, to: call.target }] }]
+    : call.provider === 'google' ? [[[text, call.text, null, null]], null, 'en'] : { code: 200, data: text }
+  response.end(JSON.stringify(payload))
+}
+
+/** DeepLX JSON fields the fixture asserts on each request. */
+interface DeeplxFields { text: string; source: string; target: string }
+
+function parseDeepLX(body: string): DeeplxFields | undefined {
+  const value: unknown = JSON.parse(body)
+  if (typeof value !== 'object' || value === null || !('text' in value) || !('source_lang' in value) || !('target_lang' in value)) return undefined
+  const text: unknown = value.text, source: unknown = value.source_lang, target: unknown = value.target_lang
+  if (typeof text !== 'string' || typeof source !== 'string' || typeof target !== 'string') return undefined
+  return { text, source, target }
 }
 
 function mainEvents(): SessionEvent[] {
@@ -62,14 +74,17 @@ export async function storageFixture(cleanups: Array<() => Promise<void>>, optio
     }
     const url = new URL(request.url ?? '/', 'http://translation.test')
     const body = Buffer.concat(chunks).toString('utf8')
-    const provider = url.pathname.startsWith('/google') ? 'google' : 'bing'
+    const provider: AnonymousTranslationProvider = url.pathname.startsWith('/google') ? 'google'
+      : url.pathname.startsWith('/deeplx') ? 'deeplx' : 'bing'
     const form = new URLSearchParams(body)
-    const value: unknown = provider === 'bing' ? JSON.parse(body) : undefined
-    if (provider === 'bing' && (!Array.isArray(value) || typeof value[0] !== 'string')) throw new Error('Expected Bing text array')
-    const text = provider === 'google' ? form.get('q') ?? '' : String(Array.isArray(value) ? value[0] : '')
-    const call: StorageWireCall = { provider, path: url.pathname, text,
-      source: provider === 'google' ? form.get('sl') ?? '' : url.searchParams.get('from') ?? 'auto',
-      target: provider === 'google' ? form.get('tl') ?? '' : url.searchParams.get('to') ?? '' }
+    const json: unknown = provider === 'bing' ? JSON.parse(body) : undefined
+    if (provider === 'bing' && (!Array.isArray(json) || typeof json[0] !== 'string')) throw new Error('Expected Bing text array')
+    const deeplx = provider === 'deeplx' ? parseDeepLX(body) : undefined
+    if (provider === 'deeplx' && deeplx === undefined) throw new Error('Expected DeepLX text and language fields')
+    const call: StorageWireCall = { provider, path: url.pathname,
+      text: deeplx?.text ?? (provider === 'google' ? form.get('q') ?? '' : String(Array.isArray(json) ? json[0] : '')),
+      source: deeplx?.source ?? (provider === 'google' ? form.get('sl') ?? '' : url.searchParams.get('from') ?? 'auto'),
+      target: deeplx?.target ?? (provider === 'google' ? form.get('tl') ?? '' : url.searchParams.get('to') ?? '') }
     requests.push(call)
     if (options.reply === undefined) storageReply(call, response)
     else await options.reply(call, response)
@@ -93,7 +108,7 @@ export async function storageFixture(cleanups: Array<() => Promise<void>>, optio
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('Expected allocated loopback listener')
   const origin = `http://127.0.0.1:${address.port}`, path = join(root, 'cordis.yml'), storedRoot = join(root, 'sessions')
-  const config = { bingEndpoint: `${origin}/bing`, googleEndpoint: `${origin}/google`, timeoutMs: 60_000 }
+  const config = { bingEndpoint: `${origin}/bing`, googleEndpoint: `${origin}/google`, deeplxEndpoint: `${origin}/deeplx`, timeoutMs: 60_000 }
   await writeFile(path, JSON.stringify([
     ...options.withSessions === false ? [] : [{ id: 'sessions', name: '@deepseek-ai/dsh-session' }],
     ...options.withPersistence === false ? [] : [

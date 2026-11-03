@@ -11,11 +11,18 @@
   - paragraph:
     - img "展开的思考行从英文翻译成中文，并显示“查看原文”按钮"
 - paragraph: 展开的思考内容会发送给所选翻译服务，可能包含私有代码或对话细节。
-- paragraph: Bing 和 Google 翻译无需额外登录或 API key，但匿名接口可能拒绝或限制请求
+- paragraph: Bing、Google 和 DeepLX 无需额外登录或 API key，DeepLX 使用本部署配置的翻译端点；这些端点可能拒绝或限制请求
 - text: 翻译服务
 - combobox "翻译服务":
   - option "Bing" [selected]
   - option "Google"
+  - option "DeepLX"
+- text: DeepLX 地址 已覆盖
+- button "恢复默认"
+- textbox "DeepLX 地址":
+  - /placeholder: ""
+  - text: {{origin}}/deeplx
+- paragraph: 填写可访问的 DeepLX POST /translate 端点；留空则使用本部署配置的端点
 - text: 目标语言
 - textbox "目标语言":
   - /placeholder: ""

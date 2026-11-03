@@ -10,7 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {} from '@deepseek-ai/dsh-experimental-client-ui-cot-translation/remote'
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { CotTranslationPreferences, CotTranslationSnapshot } from '../preferences.ts'
+import type { CotTranslationPreferences, CotTranslationSnapshot, DeeplxEndpointPreference } from '../preferences.ts'
 import { TranslationBody, type TranslationBodyInjected } from './TranslationBody.tsx'
 import { TranslationSettings } from './TranslationSettings.tsx'
 import { TranslationPreferencesForm } from './preferences-form.ts'
@@ -81,7 +81,7 @@ async function registerUi(ctx: Context, lifetime: AbortController): Promise<void
   const scope = ctx.configForms.get<CotTranslationPreferences>('cot-translation')
   ctx.effect(() => scope.subscribe(invalidate))
   ctx.effect(() => ctx.locale.register(NS, { en, zh, ja, es, fr, de, ru, pt }))
-  const form = new TranslationPreferencesForm(scope)
+  const form = new TranslationPreferencesForm(scope, ctx.configForms.get<DeeplxEndpointPreference>('translator'))
   ctx.effect(() => () => { form.dispose() })
   const injected = (sessionId: SessionId): TranslationBodyInjected => ({
     hooks: { preferences, translationLocale: ctx.locale, translationLimit },

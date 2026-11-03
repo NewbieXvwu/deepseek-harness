@@ -22,7 +22,7 @@ const requests = (events: readonly SessionEvent[]) => events.filter(event => plu
 const results = (events: readonly SessionEvent[]) => events.filter(event => pluginRecordOf(event)?.type === 'plugin:translator/result')
 
 describe('durable translation results', () => {
-  it.each(['bing', 'google'] as const)('reuses a %s result after a complete Host restart with zero new HTTP', async (provider) => {
+  it.each(['bing', 'google', 'deeplx'] as const)('reuses a %s result after a complete Host restart with zero new HTTP', async (provider) => {
     const b = await storageFixture(cleanups), original = await b.createSession()
     const spec = () => b.ctx.translator.resolve({ text: 'Original paragraph', targetLanguage: 'zh', provider, sessionId: original.id })
     expect(await b.ctx.translator.translate(spec())).toBe('Stored translation')
@@ -175,6 +175,19 @@ describe('durable translation results', () => {
     const entry = [...b.ctx.loader.entries()].find(row => row.options.id === 'translator')
     if (entry === undefined) throw new Error('Missing translator Loader row')
     await entry.update({ config: { ...b.config, bingEndpoint: b.config.bingEndpoint + '?from=legacy&to=legacy&isEnterpriseClient=true' } })
+    await b.ctx.loader.await()
+    expect(await b.ctx.translator.translate(b.ctx.translator.resolve(base))).toBe('Stored translation')
+    expect(b.requests).toHaveLength(1)
+  })
+
+  it('keeps DeepLX cache identity when its endpoint key rotates', async () => {
+    const b = await storageFixture(cleanups), original = await b.createSession()
+    const base = { text: 'Original paragraph', targetLanguage: 'zh', provider: 'deeplx' as const, sessionId: original.id }
+    expect(await b.ctx.translator.translate(b.ctx.translator.resolve(base))).toBe('Stored translation')
+    expect(b.requests[0]).toMatchObject({ provider: 'deeplx', source: 'auto', target: 'ZH-HANS' })
+    const entry = [...b.ctx.loader.entries()].find(row => row.options.id === 'translator')
+    if (entry === undefined) throw new Error('Missing translator Loader row')
+    await entry.update({ config: { ...b.config, deeplxEndpoint: `${b.config.deeplxEndpoint}?authKey=rotated` } })
     await b.ctx.loader.await()
     expect(await b.ctx.translator.translate(b.ctx.translator.resolve(base))).toBe('Stored translation')
     expect(b.requests).toHaveLength(1)

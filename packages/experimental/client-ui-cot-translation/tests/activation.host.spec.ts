@@ -69,7 +69,7 @@ async function fixture(origin?: 'subagent') {
   const sessions = await createSessionTestController(ctx, {
     nativeOpen: false, cwd: root, defaultModelSelection: () => ({ provider: 'unused', model: 'unused' }),
   })
-  await ctx.plugin(Translator, Translator.Config({ bingEndpoint: `http://127.0.0.1:${address.port}/bing` }))
+  await ctx.plugin(Translator, { bingEndpoint: `http://127.0.0.1:${address.port}/bing` })
   const ui = ctx.plugin(CotTranslationController, {})
   await ui
 

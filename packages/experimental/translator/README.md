@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`ctx.translator` translates one bounded text request through Bing or Google, with optional paid native DeepSeek Flash routes. Bing remains the default; anonymous endpoints need no login or API key. Paid translation is explicitly selected and requires an existing durable Session. This experimental package is opt-in.
+`ctx.translator` translates one bounded text request through Bing, Google, or a configured DeepLX endpoint, with optional paid native DeepSeek Flash routes. Bing remains the default; anonymous endpoints need no login or API key. Paid translation is explicitly selected and requires an existing durable Session. This experimental package is opt-in.
 
 ## Table of Contents
 
@@ -29,24 +29,25 @@ Mount the package as a Cordis service. Call `resolve({ text, targetLanguage, sou
 
 | Config | Default | Meaning |
 |---|---|---|
-| `provider` | `bing` | `google`, `bing`, `deepseek-account`, or `deepseek-official` |
+| `provider` | `bing` | `google`, `bing`, `deeplx`, `deepseek-account`, or `deepseek-official` |
 | `googleEndpoint` | `https://translate.googleapis.com/translate_a/single` | Google-compatible anonymous endpoint |
 | `bingEndpoint` | `https://edge.microsoft.com/translate/translatetext` | Microsoft Edge browser translation endpoint |
+| `deeplxEndpoint` | `http://127.0.0.1:22330/translate` | DeepLX-compatible `POST /translate` endpoint, editable from the reasoning translation panel |
 | `timeoutMs` | `10000` | Deadline for the request and complete response body |
 | `maxTextChars` | `4000` | Maximum submitted UTF-16 code units per request |
 | `maxResponseBytes` | `1048576` | Maximum anonymous JSON-body bytes or paid assembled UTF-8 translation bytes |
 | `deepseekTimeoutMs` | `60000` | Deadline for native admission/output and `availableProviders()` discovery |
 | `deepseekMaxOutputTokens` | `8192` | Requested output-token cap for independent Flash translation |
 
-Endpoints accept HTTP(S) URLs without credentials or fragments. Native `fetch` uses the Host's global dispatcher and the HTTP proxy policy installed by the `dsh` launcher. No new translation library is required.
+Endpoints accept HTTP(S) URLs without credentials or fragments; Google and Bing are checked when the profile loads, and the panel-edited `deeplxEndpoint` is checked when a request reads it, which rejects with `TRANSLATION_ENDPOINT_INVALID` without naming the address. A DeepLX instance that guards its endpoint with a key accepts that key as a query parameter of `deeplxEndpoint`; provider-owned query parameters, including the key, stay out of the stored recipe, so rotating it keeps saved results reusable. `deeplxEndpoint` is the only volatile endpoint field, so the reasoning translation panel can retarget it while this service stays mounted and the next request uses the new value. Native `fetch` uses the Host's global dispatcher and the HTTP proxy policy installed by the `dsh` launcher. No new translation library is required.
 
 Supply an existing `sessionId` to retain translation requests and successful results in its Session log. A successful result is durably flushed before `translate()` returns and is reused after remounts or process restarts when the exact source text, source and target languages, provider, and translation recipe match. Saved results need only durable Session storage. A cache miss requires an active Session; consumers own its activation. Anonymous calls without `sessionId` remain stateless. Paid routes require `sessionId`; saved results are read before native admission and remain reusable when credentials or the native provider are unavailable. Only a cache miss can start a paid query. `availableProviders(signal?)` inspects native eligibility without inference.
 
-The GUI awaits the initial provider discovery before registering translation controls. If credential or model discovery stalls, this can delay anonymous controls for up to `deepseekTimeoutMs`; the service's discovery deadline returns the choices already discovered, including Bing and Google.
+The GUI awaits the initial provider discovery before registering translation controls. If credential or model discovery stalls, this can delay anonymous controls for up to `deepseekTimeoutMs`; the service's discovery deadline returns the choices already discovered, including Bing, Google, and DeepLX.
 
 A paid cache miss for nonempty text requires the actual `dsh-llm-deepseek-account` or `dsh-llm-deepseek-api-key` provider, its registered route, configured authentication, and the exact model id `deepseek-flash`. Displayed model names and version labels do not affect selection. `llm-pi-ai` does not qualify. Every fragment is a fresh query with thinking disabled, one user text, no conversation history, no tools, and no Agent turn.
 
-The anonymous service maps `zh`, `zh-CN`, `zh-SG` and `zh-Hans` to Simplified Chinese, and `zh-TW`, `zh-HK`, `zh-MO` and `zh-Hant` to Traditional Chinese. Other tags pass through to the selected provider. Empty text returns an empty string without a network request.
+The anonymous service maps `zh`, `zh-CN`, `zh-SG` and `zh-Hans` to Simplified Chinese, and `zh-TW`, `zh-HK`, `zh-MO` and `zh-Hant` to Traditional Chinese: Google receives `zh-CN` or `zh-TW`, Bing receives `zh-Hans` or `zh-Hant`, and DeepLX receives `ZH-HANS` or `ZH-HANT`. DeepLX additionally upper-cases other tags and their region (`en-US` becomes `EN-US`) and keeps `auto` for detection; Google and Bing receive other tags unchanged. Empty text returns an empty string without a network request.
 
 -----
 
@@ -56,13 +57,13 @@ The anonymous service maps `zh`, `zh-CN`, `zh-SG` and `zh-Hans` to Simplified Ch
 <details>
 <summary>Maintainer details — click to expand</summary>
 
-Google receives a form POST using the `gtx` client; Bing receives a JSON text array through Microsoft's Edge endpoint. Both receive submitted text in the request body. Cookies, HTTP redirects and automatic provider fallback are disabled.
+Google receives a form POST using the `gtx` client; Bing receives a JSON text array through Microsoft's Edge endpoint; DeepLX receives a JSON object with `text`, `source_lang` and `target_lang` and answers with `data`. All three receive submitted text in the request body. Cookies, HTTP redirects and automatic provider fallback are disabled.
 
 Session-bound calls append provider-independent `plugin:translator/request` and `plugin:translator/result` records using the canonical plugin-record writers. A result references its request by Session sequence. Requests retain the exact source, languages, provider, recipe, and optional provider-owned metadata; results retain translated text. Anonymous recipes identify the effective configured endpoint fingerprint and protocol revision. Paid recipes identify the fixed Flash model, prompt revision, disabled thinking, and configured output-token limit. Paid request metadata stores `modelRequest: { config, system, messages }` exactly as prepared before dispatch; credentials are excluded. Every provider uses the same request/result record fields. Original conversation events and main model input remain unchanged.
 
 Storage reads validate translation payloads and request/result references. Only persisted successful results are reusable; failed or interrupted provider output is not retained as a result. A cache lookup uses read access and does not activate an Agent or publish a migrated generation. A cache miss appends through the active Session's existing writer with `appendPluginRecord`, flushes that Session, and confirms durability through storage. The translator never opens a write handle or activates a Session. Identical concurrent translations wait for the first attempt and its accepted writes, even if its consumer has already canceled or timed out, then reuse its durable result; different fragments and Sessions can make requests in parallel. Plugin records have best-effort retention across future Session-format migrations.
 
-`TranslationError.code` distinguishes input limits, HTTP failures, response limits, invalid provider responses, transport failures, missing durable Sessions, storage failures, unavailable native routes, and the service's `TRANSLATION_TIMEOUT` deadline. `TRANSLATION_SESSION_INACTIVE` rejects an uncached inactive Session before any provider call. Diagnostics include no submitted text or provider error body. `translate()` always returns a Promise and rejects admission or provider failures. Caller cancellation and service disposal preserve their original abort reasons, including caller-owned timeout reasons. Queued cancellation rejects promptly; unloading aborts accepted requests and waits for their underlying storage and network work to settle. Input limits apply in both `resolve()` and `translate()`.
+`TranslationError.code` distinguishes input limits, HTTP failures, response limits, invalid provider responses, transport failures, an unusable configured endpoint, missing durable Sessions, storage failures, unavailable native routes, and the service's `TRANSLATION_TIMEOUT` deadline. `TRANSLATION_SESSION_INACTIVE` rejects an uncached inactive Session before any provider call. Diagnostics include no submitted text or provider error body. `translate()` always returns a Promise and rejects admission or provider failures. Caller cancellation and service disposal preserve their original abort reasons, including caller-owned timeout reasons. Queued cancellation rejects promptly; unloading aborts accepted requests and waits for their underlying storage and network work to settle. Input limits apply in both `resolve()` and `translate()`.
 
 `TRANSLATION_UNAVAILABLE` rejects a missing active built-in owner or registered route, unconfigured credentials, absent exact `deepseek-flash` catalog membership, an owner, model-configuration (Official `models` or Account `modelOverrides`), or Official credential-reference change before dispatch, provider withdrawal, or a prepared call whose reasoning effort is not `off`. Eligibility and thinking checks run before dispatch, with eligibility checked again after request durability. A native `finish` with reason `error` maps to `TRANSLATION_REQUEST_FAILED`; a missing or other non-`stop` finish maps to `TRANSLATION_INVALID_RESPONSE`.
 
@@ -104,7 +105,7 @@ Paid queries are independent of the main conversation. They repeat the fixed ins
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- These unofficial browser endpoints have no supported third-party API guarantee. They may rate-limit requests, become unavailable or change response formats. Availability from mainland China depends on the user's network; the service guarantees no region-wide connectivity.
+- These unofficial endpoints have no supported third-party API guarantee. They may rate-limit requests, become unavailable or change response formats. Availability from mainland China depends on the user's network; the service guarantees no region-wide connectivity. DeepLX sends text only to the endpoint the deployment configures or the translation panel stores, so that instance's reachability, key policy, and upstream limits belong to its operator.
 - Paid translation incurs that native route's inference charges only on a cache miss. Saved results have experimental plugin-record retention and may be lost in a future Session-format migration. No route falls back to another provider.
 - Unsupported language tags fail through the selected provider. Consumers own Session activation, paragraph scheduling, input splitting and display fallback. The service reuses matching durable successful results; an admitted cache miss performs one request and never retries or switches providers.
 - Each fragment lookup scans the full Session log and rebuilds its translation index. Long logs with many fragments can delay display. No incremental index is retained.

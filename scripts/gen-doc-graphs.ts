@@ -144,7 +144,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Anonymous text translation',
     mode: 'service',
     consumers: ['experimental-client-ui-cot-translation'],
-    note: 'Resolves Google or Bing requests and retains shared experimental records through the active Session writer.',
+    note: 'Resolves Google, Bing, or DeepLX requests and retains shared experimental records through the active Session writer.',
   },
   {
     key: 'hmr',

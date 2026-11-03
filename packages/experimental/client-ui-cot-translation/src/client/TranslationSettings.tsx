@@ -21,6 +21,7 @@ function providerLabel(provider: string, t: TranslationSettingsProps['t']): stri
   switch (provider) {
     case 'bing': return t('bing')
     case 'google': return t('google')
+    case 'deeplx': return t('deeplx')
     case 'deepseek-account': return t('deepseekAccount')
     case 'deepseek-official': return t('deepseekOfficial')
     default: return provider
@@ -34,7 +35,7 @@ function providerLabel(provider: string, t: TranslationSettingsProps['t']): stri
  */
 export function TranslationSettings(props: TranslationSettingsProps) {
   const { t } = props
-  const providerId = useId(), languageId = useId()
+  const providerId = useId(), languageId = useId(), endpointId = useId()
   const state = props.useTranslationForm(value => value)
   const availableProviders = props.useAvailableProviders(value => value)
   useEffect(() => { props.refreshProviders() }, [props.refreshProviders])
@@ -60,6 +61,9 @@ export function TranslationSettings(props: TranslationSettingsProps) {
       {state.provider.invalid && <p role="status">{t('invalidProvider')}</p>}
       {missingProvider && !state.provider.invalid && <p role="status" className={css.notice}>{t('providerUnavailable')}</p>}
     </div>
+    {state.endpointAvailable && <SettingsValueField id={endpointId} label={t('deeplxEndpoint')} hint={t('deeplxEndpointHint')}
+      {...state.endpoint} overriddenLabel={t('overridden')} resetLabel={t('reset')} invalidLabel={t('invalidEndpoint')}
+      disabled={disabled} onEdit={(value) => { props.edit('deeplxEndpoint', value) }} onReset={() => { props.resetField('deeplxEndpoint') }} />}
     <SettingsValueField id={languageId} label={t('targetLanguage')} hint={t('targetLanguageHint')}
       {...state.targetLanguage} overriddenLabel={t('overridden')} resetLabel={t('reset')} invalidLabel={t('invalidLanguage')}
       disabled={disabled} onEdit={(value) => { props.edit('targetLanguage', value) }} onReset={() => { props.resetField('targetLanguage') }} />

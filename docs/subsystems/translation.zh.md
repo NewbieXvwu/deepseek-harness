@@ -6,17 +6,17 @@
 
 ## 请求与结果
 
-`TranslationProvider` 选择 `bing`、`google`、`deepseek-account` 或 `deepseek-official`。`TranslationRequest` 提供 `text`、`targetLanguage` 及可选的 `sourceLanguage`、`provider` 与带品牌类型的 `sessionId`。`resolve()` 将显式路由写入 `TranslationSpec`：配置的默认 Provider 为 Bing，省略源语言时自动检测。常见中文 locale 标签映射为所选 Provider 的语言代码。`translate()` 返回所选 Provider 翻译后的纯文本。
+`TranslationProvider` 选择 `bing`、`google`、`deeplx`、`deepseek-account` 或 `deepseek-official`。`TranslationRequest` 提供 `text`、`targetLanguage` 及可选的 `sourceLanguage`、`provider` 与带品牌类型的 `sessionId`。`resolve()` 将显式路由写入 `TranslationSpec`：配置的默认 Provider 为 Bing，省略源语言时自动检测。常见中文 locale 标签映射为所选 Provider 的语言代码。`translate()` 返回所选 Provider 翻译后的纯文本。
 
 服务公开配置的 `maxTextChars`，单位为 UTF-16 code unit。消费者先拆分超长输入，再请求翻译。每次调用限制响应字节数，并将响应体读取计入超时。调用者取消和服务卸载都会中止已接收的请求；卸载等待这些请求完成。
 
 ## 失败与数据处理
 
-`TranslationError` 的 `TranslationErrorCode` 区分文本超限、HTTP 失败、无效响应、响应超限、服务自身超时与请求失败。`TRANSLATION_SESSION_REQUIRED` 拒绝缺失的持久化后端或 Session，`TRANSLATION_SESSION_INACTIVE` 在调用 Provider 前拒绝未激活且缓存未命中的 Session，`TRANSLATION_STORAGE_ERROR` 拒绝无效保存记录或持久化失败。Provider 错误信息省略提交的文本与响应体。失败时不选择其他 Provider。响应作为外部 JSON 校验，重定向被拒绝。
+`TranslationError` 的 `TranslationErrorCode` 区分文本超限、HTTP 失败、无效响应、响应超限、服务自身超时、不可用的配置端点与请求失败。`TRANSLATION_SESSION_REQUIRED` 拒绝缺失的持久化后端或 Session，`TRANSLATION_SESSION_INACTIVE` 在调用 Provider 前拒绝未激活且缓存未命中的 Session，`TRANSLATION_STORAGE_ERROR` 拒绝无效保存记录或持久化失败。Provider 错误信息省略提交的文本与响应体。失败时不选择其他 Provider。响应作为外部 JSON 校验，重定向被拒绝。
 
 `TRANSLATION_UNAVAILABLE` 拒绝缺失的活跃内置所有者或已注册路由、未配置的凭据、目录中不存在精确的 `deepseek-flash`、派发前所有者、模型配置（官方路由的 `models` 或账号路由的 `modelOverrides`）或官方凭据引用变化、提供方卸载，以及准备后的调用推理强度不是 `off` 的情况。原生 `finish` 的原因为 `error` 时映射为 `TRANSLATION_REQUEST_FAILED`；缺失 finish 或其他非 `stop` 原因映射为 `TRANSLATION_INVALID_RESPONSE`。
 
-Google 在 form POST 请求体中接收原文，Bing 在 JSON POST 请求体中接收原文。两者都是远端服务。免登录端点不保证开发者 API 的可用性或免费额度。区域连通性须在用户网络上验证。
+Google 在 form POST 请求体中接收原文，Bing 和 DeepLX 在 JSON POST 请求体中接收原文，DeepLX 从响应的 `data` 字段读取译文。三者都是远端服务。免登录端点不保证开发者 API 的可用性或免费额度，DeepLX 只把文本发往设置面板保存的地址或本部署配置的端点。区域连通性须在用户网络上验证。
 
 ## 持久化翻译
 
@@ -26,7 +26,7 @@ Google 在 form POST 请求体中接收原文，Bing 在 JSON POST 请求体中�
 
 ## 思考内容展示
 
-[可选 Bundle](../../packages/experimental/cot-translation-bundle/README.zh.md) 将 translator 与 [GUI 消费者](../../packages/experimental/client-ui-cot-translation/README.zh.md) 组合。其 `cotTranslation` Remote 为经过身份验证的浏览器调用提供服务。Session 未激活且没有已保存结果时，Host 等待 Session controller 的正常激活，再重试一次。激活保留正常的 preset 钩子、恢复标记和中断轮次修复；取消会结束调用者的等待并阻止随后调用翻译，不取消共享激活。Bundle 设置选择翻译服务及目标语言；`auto` 跟随当前界面语言。
+[可选 Bundle](../../packages/experimental/cot-translation-bundle/README.zh.md) 将 translator 与 [GUI 消费者](../../packages/experimental/client-ui-cot-translation/README.zh.md) 组合。其 `cotTranslation` Remote 为经过身份验证的浏览器调用提供服务。Session 未激活且没有已保存结果时，Host 等待 Session controller 的正常激活，再重试一次。激活保留正常的 preset 钩子、恢复标记和中断轮次修复；取消会结束调用者的等待并阻止随后调用翻译，不取消共享激活。Bundle 设置选择翻译服务及目标语言，并把 DeepLX 地址存入 translator 的 `deeplxEndpoint`；`auto` 跟随当前界面语言。
 
 `CotTranslationPreferences` 包含已接受的翻译服务和目标语言。`CotTranslationSnapshot` 将这些偏好与 translator 当前的 `maxTextChars` 及可用服务 ID 一起返回。浏览器在注册翻译控件前读取此 Host 快照，本地设置存储不可用时也如此。接受的设置更新及重新连接会刷新这两项值；请求长度限制变化时，展开内容的请求被取消并重新分片。
 

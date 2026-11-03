@@ -1,8 +1,8 @@
 /** Provider-independent inputs to the experimental translation service. */
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 
-/** Anonymous browser endpoint selected for one translation. */
-export type AnonymousTranslationProvider = 'google' | 'bing'
+/** Anonymous endpoint protocol selected for one translation. */
+export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx'
 
 /** Explicit native DeepSeek credential route selected for paid translation. */
 export type PaidTranslationProvider = 'deepseek-account' | 'deepseek-official'
@@ -90,4 +90,4 @@ declare module '@deepseek-ai/dsh-session/types' {
 export type TranslationErrorCode = 'TRANSLATION_TEXT_LIMIT' | 'TRANSLATION_HTTP_ERROR'
   | 'TRANSLATION_INVALID_RESPONSE' | 'TRANSLATION_RESPONSE_LIMIT' | 'TRANSLATION_REQUEST_FAILED' | 'TRANSLATION_TIMEOUT'
   | 'TRANSLATION_SESSION_REQUIRED' | 'TRANSLATION_SESSION_INACTIVE' | 'TRANSLATION_STORAGE_ERROR'
-  | 'TRANSLATION_UNAVAILABLE'
+  | 'TRANSLATION_ENDPOINT_INVALID' | 'TRANSLATION_UNAVAILABLE'

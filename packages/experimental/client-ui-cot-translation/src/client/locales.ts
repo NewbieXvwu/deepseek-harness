@@ -6,12 +6,15 @@ export const NS = 'cotTranslation'
 
 /** English copy and key source. */
 export const en = {
-  provider: 'Translation service', google: 'Google', bing: 'Bing',
+  provider: 'Translation service', google: 'Google', bing: 'Bing', deeplx: 'DeepLX',
+  deeplxEndpoint: 'DeepLX address',
+  deeplxEndpointHint: 'A reachable DeepLX POST /translate endpoint; leave it empty to use the endpoint this deployment configures.',
+  invalidEndpoint: 'Enter an http(s) endpoint URL without credentials or a fragment.',
   deepseekAccount: 'DeepSeek Flash — account (paid)', deepseekOfficial: 'DeepSeek Flash — official API (paid)',
   providerUnavailableOption: '{provider} — unavailable',
   providerUnavailable: 'This provider is unavailable. Configure your DeepSeek account or official API provider, or choose an available service.',
   paidNotice: 'Each uncached fragment sends a separate paid DeepSeek Flash request through the selected account or official API credentials. Reopening reasoning reuses saved results; changing the provider, language, source text, or request settings may send a new paid request.',
-  anonymousNotice: 'Bing and Google need no translation login or API key. Their anonymous endpoints may reject or limit requests.', targetLanguage: 'Target language',
+  anonymousNotice: 'Bing, Google, and DeepLX need no translation login or API key. DeepLX translates through the endpoint your deployment configures. These endpoints may reject or limit requests.', targetLanguage: 'Target language',
   targetLanguageHint: 'auto follows the UI language; language codes such as zh, en, and ja also work.',
   privacy: 'Expanded reasoning is sent to the selected service. It may contain private code or conversation details.',
   translation: 'View translation', original: 'View original', retry: 'Retry', failed: 'Translation failed. Showing the original.',
@@ -27,12 +30,15 @@ export type CotTranslationKey = keyof typeof en
 
 /** Chinese copy. */
 export const zh: Record<CotTranslationKey, string> = {
-  provider: '翻译服务', google: 'Google', bing: 'Bing',
+  provider: '翻译服务', google: 'Google', bing: 'Bing', deeplx: 'DeepLX',
+  deeplxEndpoint: 'DeepLX 地址',
+  deeplxEndpointHint: '填写可访问的 DeepLX POST /translate 端点；留空则使用本部署配置的端点',
+  invalidEndpoint: '请填写不含凭据或锚点的 http(s) 端点地址',
   deepseekAccount: 'DeepSeek Flash · 账号（付费）', deepseekOfficial: 'DeepSeek Flash · 官方 API（付费）',
   providerUnavailableOption: '{provider} — 不可用',
   providerUnavailable: '此服务暂不可用，请配置 DeepSeek 账号或官方 API 服务，或选择可用的翻译服务',
   paidNotice: '每个未缓存片段都会通过所选账号或官方 API 凭据单独发送一次付费的 DeepSeek Flash 请求；重新展开会复用已保存的译文，更改服务、语言、原文或请求设置可能发送新的付费请求',
-  anonymousNotice: 'Bing 和 Google 翻译无需额外登录或 API key，但匿名接口可能拒绝或限制请求', targetLanguage: '目标语言',
+  anonymousNotice: 'Bing、Google 和 DeepLX 无需额外登录或 API key，DeepLX 使用本部署配置的翻译端点；这些端点可能拒绝或限制请求', targetLanguage: '目标语言',
   targetLanguageHint: 'auto 使用界面语言；也可填写语言代码，例如 zh、en、ja',
   privacy: '展开的思考内容会发送给所选翻译服务，可能包含私有代码或对话细节。',
   translation: '查看译文', original: '查看原文', retry: '重试', failed: '翻译暂不可用，已显示原文',
@@ -57,12 +63,16 @@ export const ja = {
   'provider': '翻訳サービス',
   'google': 'Google',
   'bing': 'Bing',
+  'deeplx': 'DeepLX',
+  'deeplxEndpoint': 'DeepLX アドレス',
+  'deeplxEndpointHint': 'アクセスできる DeepLX の POST /translate エンドポイント。空欄の場合はデプロイが設定したエンドポイントを使用します。',
+  'invalidEndpoint': '資格情報やフラグメントを含まない http(s) エンドポイント URL を入力してください。',
   'deepseekAccount': 'DeepSeek Flash — アカウント (有料)',
   'deepseekOfficial': 'DeepSeek Flash — 公式 API (有料)',
   'providerUnavailableOption': '{provider} — 利用不可',
   'providerUnavailable': 'このプロバイダーは利用できません。DeepSeek アカウントまたは公式 API プロバイダーを設定するか、利用可能なサービスを選択してください。',
   'paidNotice': 'キャッシュされていないフラグメントごとに、選択したアカウントまたは公式 API の認証情報を通じて、個別の有料 DeepSeek Flash リクエストが送信されます。推論を再度開くと保存済みの結果が再利用されますが、プロバイダー、言語、ソーステキスト、またはリクエスト設定を変更すると、新たな有料リクエストが送信される場合があります。',
-  'anonymousNotice': 'Bing と Google は翻訳のログインや API キーが不要です。これらの匿名エンドポイントはリクエストを拒否したり制限したりする場合があります。',
+  'anonymousNotice': 'Bing、Google、DeepLX は翻訳のログインや API キーが不要です。DeepLX はデプロイが設定したエンドポイントで翻訳します。これらのエンドポイントはリクエストを拒否したり制限したりする場合があります。',
   'targetLanguage': '翻訳先の言語',
   'targetLanguageHint': 'auto は UI の言語に従います。zh、en、ja などの言語コードも使用できます。',
   'privacy': '展開された推論は選択したサービスに送信されます。非公開のコードや会話の詳細が含まれている可能性があります。',
@@ -90,12 +100,15 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
-  provider: 'Servicio de traducción', google: 'google', bing: 'Bing',
+  provider: 'Servicio de traducción', google: 'google', bing: 'Bing', deeplx: 'DeepLX',
+  deeplxEndpoint: 'Dirección de DeepLX',
+  deeplxEndpointHint: 'Un endpoint POST /translate de DeepLX accesible; déjelo vacío para usar el endpoint que configura su despliegue.',
+  invalidEndpoint: 'Introduzca una URL http(s) de endpoint sin credenciales ni fragmento.',
   deepseekAccount: 'DeepSeek Flash — cuenta (pago)', deepseekOfficial: 'Flash DeepSeek: API oficial (de pago)',
   providerUnavailableOption: '{provider} — no disponible',
   providerUnavailable: 'Este proveedor no está disponible. Configura tu cuenta DeepSeek o proveedor oficial de API, o elige un servicio disponible.',
   paidNotice: 'Cada fragmento no almacenado en caché envía una solicitud Flash DeepSeek paga por separado a través de la cuenta seleccionada o las credenciales oficiales de API. El razonamiento de reapertura reutiliza los resultados guardados; cambiar el proveedor, el idioma, el texto fuente o la configuración de la solicitud puede enviar una nueva solicitud paga.',
-  anonymousNotice: 'Bing y Google no necesitan inicio de sesión de traducción ni clave API. Sus puntos finales anónimos pueden rechazar o limitar solicitudes.', targetLanguage: 'Idioma de destino',
+  anonymousNotice: 'Bing, Google y DeepLX no necesitan inicio de sesión de traducción ni clave API. DeepLX traduce a través del punto final que configura su despliegue. Estos puntos finales pueden rechazar o limitar solicitudes.', targetLanguage: 'Idioma de destino',
   targetLanguageHint: 'auto sigue el idioma de la interfaz de usuario; Los códigos de idioma como zh, en y ja también funcionan.',
   privacy: 'Se envía el razonamiento ampliado al servicio seleccionado. Puede contener código privado o detalles de la conversación.',
   translation: 'Ver traducción', original: 'Ver original', retry: 'Reintentar', failed: 'La traducción falló. Mostrando el original.',
@@ -108,12 +121,15 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
-  provider: 'Service de traduction', google: 'Google', bing: 'Bing',
+  provider: 'Service de traduction', google: 'Google', bing: 'Bing', deeplx: 'DeepLX',
+  deeplxEndpoint: 'Adresse DeepLX',
+  deeplxEndpointHint: 'Un point de terminaison POST /translate DeepLX accessible ; laissez le champ vide pour utiliser celui configuré par votre déploiement.',
+  invalidEndpoint: 'Saisissez une URL http(s) de point de terminaison sans identifiants ni fragment.',
   deepseekAccount: 'DeepSeek Flash — compte (payant)', deepseekOfficial: 'DeepSeek Flash — API officiel (payant)',
   providerUnavailableOption: '{provider} — indisponible',
   providerUnavailable: "Ce fournisseur n'est pas disponible. Configurez votre compte DeepSeek ou votre fournisseur officiel API, ou choisissez un service disponible.",
   paidNotice: "Chaque fragment non mis en cache envoie une demande Flash DeepSeek payante distincte via le compte sélectionné ou les informations d'identification officielles API. La réouverture du raisonnement réutilise les résultats enregistrés ; la modification du fournisseur, de la langue, du texte source ou des paramètres de la demande peut envoyer une nouvelle demande payante.",
-  anonymousNotice: "Bing et Google n'ont pas besoin de connexion de traduction ni de clé API. Leurs points de terminaison anonymes peuvent rejeter ou limiter les demandes.", targetLanguage: 'Langue cible',
+  anonymousNotice: 'Bing, Google et DeepLX ne nécessitent ni connexion de traduction ni clé API. DeepLX traduit via le point de terminaison configuré par votre déploiement. Ces points de terminaison peuvent rejeter ou limiter les demandes.', targetLanguage: 'Langue cible',
   targetLanguageHint: "auto suit la langue de l'interface utilisateur ; les codes de langue tels que zh, en et ja fonctionnent également.",
   privacy: 'Le raisonnement étendu est envoyé au service sélectionné. Il peut contenir du code privé ou des détails de conversation.',
   translation: 'Voir la traduction', original: "Voir l'original", retry: 'Réessayer', failed: "La traduction a échoué. Montrant l'original.",
@@ -126,12 +142,15 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
-  provider: 'Übersetzungsdienst', google: 'Google', bing: 'Bing',
+  provider: 'Übersetzungsdienst', google: 'Google', bing: 'Bing', deeplx: 'DeepLX',
+  deeplxEndpoint: 'DeepLX-Adresse',
+  deeplxEndpointHint: 'Ein erreichbarer DeepLX-Endpunkt für POST /translate; lassen Sie das Feld leer, um den von Ihrer Bereitstellung konfigurierten Endpunkt zu verwenden.',
+  invalidEndpoint: 'Geben Sie eine http(s)-Endpunkt-URL ohne Anmeldeinformationen oder Fragment ein.',
   deepseekAccount: 'DeepSeek Flash – Konto (kostenpflichtig)', deepseekOfficial: 'DeepSeek Flash – offizieller API (kostenpflichtig)',
   providerUnavailableOption: '{provider} – nicht verfügbar',
   providerUnavailable: 'Dieser Anbieter ist nicht verfügbar. Konfigurieren Sie Ihr DeepSeek-Konto oder Ihren offiziellen API-Anbieter oder wählen Sie einen verfügbaren Dienst.',
   paidNotice: 'Jedes nicht zwischengespeicherte Fragment sendet eine separate kostenpflichtige DeepSeek-Flash-Anfrage über das ausgewählte Konto oder die offiziellen API-Anmeldeinformationen. Beim erneuten Öffnen der Argumentation werden gespeicherte Ergebnisse wiederverwendet. Wenn Sie den Anbieter, die Sprache, den Quelltext oder die Anfrageeinstellungen ändern, wird möglicherweise eine neue kostenpflichtige Anfrage gesendet.',
-  anonymousNotice: 'Für Bing und Google ist weder ein Übersetzungs-Login noch ein API-Schlüssel erforderlich. Ihre anonymen Endpunkte können Anfragen ablehnen oder einschränken.', targetLanguage: 'Zielsprache',
+  anonymousNotice: 'Für Bing, Google und DeepLX ist weder ein Übersetzungs-Login noch ein API-Schlüssel erforderlich. DeepLX übersetzt über den von Ihrer Bereitstellung konfigurierten Endpunkt. Diese Endpunkte können Anfragen ablehnen oder einschränken.', targetLanguage: 'Zielsprache',
   targetLanguageHint: 'folgt automatisch der UI-Sprache; Sprachcodes wie zh, en und ja funktionieren ebenfalls.',
   privacy: 'Die erweiterte Begründung wird an den ausgewählten Dienst gesendet. Es kann private Code- oder Konversationsdetails enthalten.',
   translation: 'Übersetzung ansehen', original: 'Original ansehen', retry: 'Erneut versuchen', failed: 'Die Übersetzung ist fehlgeschlagen. Zeigt das Original.',
@@ -144,12 +163,15 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
-  provider: 'Услуги перевода', google: 'Гугл', bing: 'Бинг',
+  provider: 'Услуги перевода', google: 'Гугл', bing: 'Бинг', deeplx: 'DeepLX',
+  deeplxEndpoint: 'Адрес DeepLX',
+  deeplxEndpointHint: 'Доступная конечная точка DeepLX для POST /translate; оставьте поле пустым, чтобы использовать конечную точку, настроенную вашим развертыванием.',
+  invalidEndpoint: 'Введите URL конечной точки http(s) без учетных данных и фрагмента.',
   deepseekAccount: 'DeepSeek Flash — аккаунт (платный)', deepseekOfficial: 'DeepSeek Flash — официальный API (платный)',
   providerUnavailableOption: '{provider} — недоступен',
   providerUnavailable: 'Этот провайдер недоступен. Настройте свою учетную запись DeepSeek или официального провайдера API или выберите доступную услугу.',
   paidNotice: 'Каждый некэшированный фрагмент отправляет отдельный платный запрос DeepSeek Flash через выбранную учетную запись или официальные учетные данные API. При повторном открытии рассуждений повторно используются сохраненные результаты; изменение провайдера, языка, исходного текста или настроек запроса может привести к отправке нового платного запроса.',
-  anonymousNotice: 'Bing и Google не требуют входа в систему для перевода или ключа API. Их анонимные конечные точки могут отклонять или ограничивать запросы.', targetLanguage: 'Целевой язык',
+  anonymousNotice: 'Bing, Google и DeepLX не требуют входа для перевода или ключа API. DeepLX переводит через конечную точку, настроенную вашим развертыванием. Эти конечные точки могут отклонять или ограничивать запросы.', targetLanguage: 'Целевой язык',
   targetLanguageHint: 'автоматически следует языку пользовательского интерфейса; коды языков, такие как zh, en и ja, также работают.',
   privacy: 'Развернутое обоснование отправляется в выбранную службу. Он может содержать личный код или детали разговора.',
   translation: 'Посмотреть перевод', original: 'Посмотреть оригинал', retry: 'Повторить', failed: 'Перевод не удался. Показываю оригинал.',
@@ -162,12 +184,15 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
-  provider: 'Serviço de tradução', google: 'Google', bing: 'Google',
+  provider: 'Serviço de tradução', google: 'Google', bing: 'Google', deeplx: 'DeepLX',
+  deeplxEndpoint: 'Endereço do DeepLX',
+  deeplxEndpointHint: 'Um endpoint DeepLX acessível para POST /translate; deixe em branco para usar o endpoint configurado na sua implantação.',
+  invalidEndpoint: 'Insira uma URL de endpoint http(s) sem credenciais nem fragmento.',
   deepseekAccount: 'DeepSeek Flash — conta (paga)', deepseekOfficial: 'DeepSeek Flash — oficial API (pago)',
   providerUnavailableOption: '{provider} — indisponível',
   providerUnavailable: 'Este provedor não está disponível. Configure sua conta DeepSeek ou provedor API oficial ou escolha um serviço disponível.',
   paidNotice: 'Cada fragmento não armazenado em cache envia uma solicitação Flash DeepSeek paga separada por meio da conta selecionada ou das credenciais API oficiais. A reabertura do raciocínio reutiliza resultados salvos; alterar o provedor, o idioma, o texto fonte ou as configurações da solicitação pode enviar uma nova solicitação paga.',
-  anonymousNotice: 'O Bing e o Google não precisam de login de tradução ou chave API. Seus endpoints anônimos podem rejeitar ou limitar solicitações.', targetLanguage: 'Idioma alvo',
+  anonymousNotice: 'Bing, Google e DeepLX não exigem login de tradução nem chave API. O DeepLX traduz pelo endpoint configurado na sua implantação. Esses endpoints podem rejeitar ou limitar solicitações.', targetLanguage: 'Idioma alvo',
   targetLanguageHint: 'auto segue o idioma da UI; códigos de idioma como zh, en e ja também funcionam.',
   privacy: 'O raciocínio expandido é enviado ao serviço selecionado. Pode conter código privado ou detalhes da conversa.',
   translation: 'Ver tradução', original: 'Ver original', retry: 'Tentar novamente', failed: 'A tradução falhou. Mostrando o original.',

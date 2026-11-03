@@ -10,6 +10,7 @@ import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type { Config } from './index.ts'
 import type { PaidTranslationProvider, PaidTranslationSpec, TranslationIdentity, TranslationProvider } from './types.ts'
+import { ANONYMOUS_PROVIDERS } from './provider.ts'
 import { TranslationError } from './error.ts'
 import type { TranslationLog } from './storage.ts'
 
@@ -115,7 +116,7 @@ async function eligible(ctx: Context, provider: PaidTranslationProvider, signal:
 export async function availablePaidProviders(ctx: Context, config: Config, signal: AbortSignal,
   track: (work: Promise<unknown>) => void): Promise<readonly TranslationProvider[]> {
   using timeout = deadline(signal, config.deepseekTimeoutMs, 'TRANSLATION_TIMEOUT')
-  const available: TranslationProvider[] = ['bing', 'google']
+  const available: TranslationProvider[] = [...ANONYMOUS_PROVIDERS]
   for (const provider of ['deepseek-account', 'deepseek-official'] as const) {
     try {
       const candidate = await eligible(ctx, provider, timeout.signal, track)

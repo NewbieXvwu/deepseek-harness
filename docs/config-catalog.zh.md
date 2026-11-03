@@ -1469,6 +1469,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-experimental-translator`
 
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
 - `source`: [`packages/experimental/translator/src/index.ts:25`](../packages/experimental/translator/src/index.ts)
 
 ```ts config-catalog
@@ -1480,6 +1481,8 @@ export interface Config {
   googleEndpoint: string
   /** Bing-compatible Microsoft Edge browser translation endpoint. */
   bingEndpoint: string
+  /** DeepLX-compatible translation endpoint, editable from the reasoning-translation panel and checked when a request uses it. */
+  deeplxEndpoint: Volatile<string>
   /** Deadline covering the request and complete response body, in milliseconds. */
   timeoutMs: number
   /** Maximum UTF-16 code units per request; at least two to admit one supplementary-plane character. */
@@ -1495,8 +1498,8 @@ export interface Config {
 /** Explicit anonymous endpoint or native paid model route. */
 export type TranslationProvider = AnonymousTranslationProvider | PaidTranslationProvider
 
-/** Anonymous browser endpoint selected for one translation. */
-export type AnonymousTranslationProvider = 'google' | 'bing'
+/** Anonymous endpoint protocol selected for one translation. */
+export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx'
 
 /** Explicit native DeepSeek credential route selected for paid translation. */
 export type PaidTranslationProvider = 'deepseek-account' | 'deepseek-official'

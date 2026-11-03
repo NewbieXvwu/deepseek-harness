@@ -2,6 +2,7 @@
 import { SettingsFormModel, settingsTextField, type SettingsFieldState, type SettingsFieldSpec, type SettingsFormActions,
   type SettingsFormScope, type SettingsFormShell } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { TranslationProvider } from '@deepseek-ai/dsh-experimental-translator/types'
 import { isTranslationEndpoint, LANGUAGE_PREFERENCE_PATTERN, PROVIDER_PREFERENCES,
   type CotTranslationPreferences, type DeeplxEndpointPreference } from '../preferences.ts'
 
@@ -9,10 +10,10 @@ import { isTranslationEndpoint, LANGUAGE_PREFERENCE_PATTERN, PROVIDER_PREFERENCE
 export interface TranslationFormState extends SettingsFormShell {
   provider: SettingsFieldState
   targetLanguage: SettingsFieldState
-  /** DeepLX address draft; its row stays absent while the Host serves no translator namespace. */
+  /** DeepLX address draft; its row stays absent while another service is staged or no translator namespace is served. */
   endpoint: SettingsFieldState
-  /** Whether the Host serves the translator namespace that holds the address. */
-  endpointAvailable: boolean
+  /** Whether the panel offers the address row: the Host serves the translator namespace and DeepLX is staged. */
+  endpointVisible: boolean
 }
 
 /** Registration-side form observable and edit callbacks. */
@@ -22,6 +23,9 @@ export interface TranslationFormInjected extends SettingsFormActions {
 
 /** One field name routes an edit or reset to the namespace that owns it. */
 const ENDPOINT_FIELD = 'deeplxEndpoint'
+
+/** The service choice that gives the stored address a reader. */
+const DEEPLX_PROVIDER: TranslationProvider = 'deeplx'
 
 /** Stages provider, language, and DeepLX address edits until the reader saves them. */
 export class TranslationPreferencesForm {
@@ -94,25 +98,29 @@ export class TranslationPreferencesForm {
     return field === ENDPOINT_FIELD ? this.endpoint : this.selection
   }
 
-  /** Whether an address draft can still land: its row shows only while the Host serves the translator namespace. */
+  /** Whether an address draft can still land: the row shows only while DeepLX is staged in a served translator namespace. */
   private endpointWrites(): boolean {
-    const endpoint = this.endpoint.shell()
-    return endpoint.available && endpoint.dirty
+    return this.endpointVisible() && this.endpoint.shell().dirty
+  }
+
+  /** Whether the address row is on screen. */
+  private endpointVisible(): boolean {
+    return this.endpoint.shell().available && this.selection.field('provider').text === DEEPLX_PROVIDER
   }
 
   /** One status across both namespaces the panel edits. */
   private shell(): SettingsFormShell {
     const selection = this.selection.shell(), endpoint = this.endpoint.shell()
     // A draft in a namespace the panel no longer shows is no pending edit: nothing on screen could change it.
-    const staged = endpoint.available ? [selection, endpoint] : [selection]
+    const staged = this.endpointVisible() ? [selection, endpoint] : [selection]
     return { available: selection.available, writable: selection.writable,
       dirty: staged.some(item => item.dirty), invalid: staged.some(item => item.invalid),
-      saving: selection.saving || endpoint.saving, failed: selection.failed || endpoint.failed }
+      saving: selection.saving || endpoint.saving, failed: staged.some(item => item.failed) }
   }
 
   private projection(): TranslationFormState {
     return { ...this.shell(), provider: this.selection.field('provider'), targetLanguage: this.selection.field('targetLanguage'),
-      endpoint: this.endpoint.field(ENDPOINT_FIELD), endpointAvailable: this.endpoint.shell().available }
+      endpoint: this.endpoint.field(ENDPOINT_FIELD), endpointVisible: this.endpointVisible() }
   }
 
   private publish(): void { this.state.set(this.projection()) }

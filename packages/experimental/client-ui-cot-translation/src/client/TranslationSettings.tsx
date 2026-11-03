@@ -61,7 +61,7 @@ export function TranslationSettings(props: TranslationSettingsProps) {
       {state.provider.invalid && <p role="status">{t('invalidProvider')}</p>}
       {missingProvider && !state.provider.invalid && <p role="status" className={css.notice}>{t('providerUnavailable')}</p>}
     </div>
-    {state.endpointAvailable && <SettingsValueField id={endpointId} label={t('deeplxEndpoint')} hint={t('deeplxEndpointHint')}
+    {state.endpointVisible && <SettingsValueField id={endpointId} label={t('deeplxEndpoint')} hint={t('deeplxEndpointHint')}
       {...state.endpoint} overriddenLabel={t('overridden')} resetLabel={t('reset')} invalidLabel={t('invalidEndpoint')}
       disabled={disabled} onEdit={(value) => { props.edit('deeplxEndpoint', value) }} onReset={() => { props.resetField('deeplxEndpoint') }} />}
     <SettingsValueField id={languageId} label={t('targetLanguage')} hint={t('targetLanguageHint')}

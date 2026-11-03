@@ -189,16 +189,19 @@ function renderSettings(injected: ReturnType<TranslationPreferencesForm['inject'
 
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:22330/translate'
 
-it('shows the address row only for the served translator namespace and writes it before the service choice', async () => {
+it('shows the address row only while DeepLX is staged in a served translator namespace, and writes it before the service choice', async () => {
   const scope = stubConfigForm<CotTranslationPreferences>(), endpoint = stubConfigForm<DeeplxEndpointPreference>()
   scope.publish({ status: 'ready', value: { provider: 'bing', targetLanguage: 'auto' },
     base: { provider: 'bing', targetLanguage: 'auto' }, user: {}, writable: true, revision: 9 })
   const form = new TranslationPreferencesForm(scope.scope, endpoint.scope)
-  const { view, props, hooks } = renderSettings(form.inject(), ['bing', 'google', 'deeplx'])
+  const { view, props, actions, hooks } = renderSettings(form.inject(), ['bing', 'google', 'deeplx'])
   try {
     expect(view.queryByLabelText(en.deeplxEndpoint)).toBeNull()
     endpoint.publish({ status: 'ready', value: { deeplxEndpoint: DEFAULT_ENDPOINT },
       base: { deeplxEndpoint: DEFAULT_ENDPOINT }, user: {}, writable: true, revision: 5 })
+    view.rerender(<TranslationSettings {...props} />)
+    expect(view.queryByLabelText(en.deeplxEndpoint)).toBeNull()
+    act(() => { actions.edit('provider', 'deeplx') })
     view.rerender(<TranslationSettings {...props} />)
     expect(view.getByLabelText(en.deeplxEndpoint)).toHaveProperty('value', DEFAULT_ENDPOINT)
     expect(view.getByText(en.deeplxEndpointHint)).toBeTruthy()
@@ -211,7 +214,6 @@ it('shows the address row only for the served translator namespace and writes it
     expect(view.getByRole('button', { name: en.save })).toHaveProperty('disabled', true)
     expect(writes).toEqual([])
     fireEvent.change(view.getByLabelText(en.deeplxEndpoint), { target: { value: 'http://192.168.1.9:22330/translate' } })
-    fireEvent.change(view.getByLabelText(en.provider), { target: { value: 'deeplx' } })
     fireEvent.click(view.getByRole('button', { name: en.save }))
     await vi.waitFor(() => { expect(writes).toEqual([
       `endpoint ${JSON.stringify([[{ op: 'set', path: ['deeplxEndpoint'], value: 'http://192.168.1.9:22330/translate' }], 5])}`,
@@ -221,6 +223,29 @@ it('shows the address row only for the served translator namespace and writes it
   } finally { view.unmount(); form.dispose() }
   expect(scope.listenerCount()).toBe(0)
   expect(endpoint.listenerCount()).toBe(0)
+})
+
+it('hides the address row and stops counting its draft once the service moves off DeepLX', async () => {
+  const scope = stubConfigForm<CotTranslationPreferences>(), endpoint = stubConfigForm<DeeplxEndpointPreference>()
+  scope.publish({ status: 'ready', value: { provider: 'deeplx', targetLanguage: 'auto' },
+    base: { provider: 'deeplx', targetLanguage: 'auto' }, user: {}, writable: true, revision: 9 })
+  endpoint.publish({ status: 'ready', value: { deeplxEndpoint: DEFAULT_ENDPOINT },
+    base: { deeplxEndpoint: DEFAULT_ENDPOINT }, user: {}, writable: true, revision: 5 })
+  const form = new TranslationPreferencesForm(scope.scope, endpoint.scope)
+  const { view, props, actions, hooks } = renderSettings(form.inject(), ['bing', 'google', 'deeplx'])
+  try {
+    expect(view.getByLabelText(en.deeplxEndpoint)).toHaveProperty('value', DEFAULT_ENDPOINT)
+    act(() => { actions.edit('deeplxEndpoint', 'not an endpoint') })
+    expect(hooks.translationForm.getSnapshot().invalid).toBe(true)
+    act(() => { actions.edit('provider', 'bing') })
+    view.rerender(<TranslationSettings {...props} />)
+    expect(view.queryByLabelText(en.deeplxEndpoint)).toBeNull()
+    // The hidden row holds an address the panel can no longer show, so it neither blocks nor joins the save.
+    expect(hooks.translationForm.getSnapshot().invalid).toBe(false)
+    fireEvent.click(view.getByRole('button', { name: en.save }))
+    await vi.waitFor(() => { expect(scope.mutate).toHaveBeenCalledWith([{ op: 'set', path: ['provider'], value: 'bing' }], 9) })
+    expect(endpoint.mutate).not.toHaveBeenCalled()
+  } finally { view.unmount(); form.dispose() }
 })
 
 it('stops before the service choice when the translator refuses the address, and keeps both drafts', async () => {
@@ -234,8 +259,8 @@ it('stops before the service choice when the translator refuses the address, and
   const { view, props, actions, hooks } = renderSettings(form.inject(), ['bing', 'google', 'deeplx'])
   try {
     act(() => {
-      actions.edit('deeplxEndpoint', 'http://192.168.1.9:22330/translate')
       actions.edit('provider', 'deeplx')
+      actions.edit('deeplxEndpoint', 'http://192.168.1.9:22330/translate')
     })
     fireEvent.click(view.getByRole('button', { name: en.save }))
     await vi.waitFor(() => { expect(hooks.translationForm.getSnapshot().failed).toBe(true) })
@@ -250,8 +275,8 @@ it('stops before the service choice when the translator refuses the address, and
 
 it('saves an address-only draft without a write to the service choice', async () => {
   const scope = stubConfigForm<CotTranslationPreferences>(), endpoint = stubConfigForm<DeeplxEndpointPreference>()
-  scope.publish({ status: 'ready', value: { provider: 'bing', targetLanguage: 'auto' },
-    base: { provider: 'bing', targetLanguage: 'auto' }, user: {}, writable: true, revision: 9 })
+  scope.publish({ status: 'ready', value: { provider: 'deeplx', targetLanguage: 'auto' },
+    base: { provider: 'deeplx', targetLanguage: 'auto' }, user: {}, writable: true, revision: 9 })
   endpoint.publish({ status: 'ready', value: { deeplxEndpoint: DEFAULT_ENDPOINT },
     base: { deeplxEndpoint: DEFAULT_ENDPOINT }, user: {}, writable: true, revision: 5 })
   const form = new TranslationPreferencesForm(scope.scope, endpoint.scope)
@@ -292,23 +317,26 @@ it('clears a stored address back to the deployment endpoint from the row or an e
 
 it('drops a staged address from the form state once the translator namespace stops being served', async () => {
   const scope = stubConfigForm<CotTranslationPreferences>(), endpoint = stubConfigForm<DeeplxEndpointPreference>()
-  scope.publish({ status: 'ready', value: { provider: 'google', targetLanguage: 'auto' },
-    base: { provider: 'google', targetLanguage: 'auto' }, user: {}, writable: true, revision: 2 })
+  scope.publish({ status: 'ready', value: { provider: 'deeplx', targetLanguage: 'auto' },
+    base: { provider: 'deeplx', targetLanguage: 'auto' }, user: {}, writable: true, revision: 2 })
   endpoint.publish({ status: 'ready', value: { deeplxEndpoint: DEFAULT_ENDPOINT },
     base: { deeplxEndpoint: DEFAULT_ENDPOINT }, user: {}, writable: true, revision: 1 })
   const form = new TranslationPreferencesForm(scope.scope, endpoint.scope)
   const { view, props, actions, hooks } = renderSettings(form.inject(), ['bing', 'google', 'deeplx'])
   try {
-    act(() => { actions.edit('deeplxEndpoint', 'http://192.168.1.9:22330/translate') })
+    act(() => {
+      actions.edit('deeplxEndpoint', 'http://192.168.1.9:22330/translate')
+      actions.edit('targetLanguage', 'ja')
+    })
     expect(hooks.translationForm.getSnapshot().dirty).toBe(true)
     endpoint.publish({ status: 'unavailable' })
     view.rerender(<TranslationSettings {...props} />)
     expect(view.queryByLabelText(en.deeplxEndpoint)).toBeNull()
-    expect(hooks.translationForm.getSnapshot().dirty).toBe(false)
-    expect(hooks.translationForm.getSnapshot().invalid).toBe(false)
-    act(() => { actions.edit('provider', 'deeplx') })
+    act(() => { actions.edit('provider', 'google') })
     fireEvent.click(view.getByRole('button', { name: en.save }))
-    await vi.waitFor(() => { expect(scope.mutate).toHaveBeenCalledWith([{ op: 'set', path: ['provider'], value: 'deeplx' }], 2) })
+    await vi.waitFor(() => { expect(scope.mutate).toHaveBeenCalledWith([
+      { op: 'set', path: ['targetLanguage'], value: 'ja' }, { op: 'set', path: ['provider'], value: 'google' },
+    ], 2) })
     expect(endpoint.mutate).not.toHaveBeenCalled()
   } finally { view.unmount(); form.dispose() }
 })

@@ -228,7 +228,7 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   expect(await provider.inputValue()).toBe('bing')
   expect(await target.inputValue()).toBe('auto')
   const endpoint = panel.getByLabel('DeepLX 地址', { exact: true })
-  expect(await endpoint.inputValue()).toBe(`${origin}/deeplx`)
+  await expect.poll(() => endpoint.count()).toBe(0)
   await panel.getByText('展开的思考内容会发送给所选翻译服务，可能包含私有代码或对话细节。', { exact: true }).waitFor()
   await panel.getByText(`v${bundleVersion}`, { exact: true }).waitFor()
   await panel.getByText(bundleVersion, { exact: true }).waitFor()
@@ -368,6 +368,8 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await provider.selectOption('deeplx')
   await save.click()
   await expect.poll(() => save.isDisabled()).toBe(true)
+  // Choosing DeepLX is what offers the address row, seeded from the endpoint this deployment configures.
+  await expect.poll(() => endpoint.inputValue()).toBe(`${origin}/deeplx`)
   await body.getByText(DEEPLX_TRANSLATION, { exact: true }).waitFor()
   await expect.poll(() => body.getAttribute('data-translation-state')).toBe('ready')
   expect(calls).toHaveLength(7)

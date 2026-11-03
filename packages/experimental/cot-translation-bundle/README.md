@@ -25,7 +25,7 @@ Translate expanded reasoning into the interface language or another chosen langu
 <a id="use-this-package"></a>
 ## Use this package
 
-Open Plugins and enable Reasoning translation in the Official group. Open its details to select a translation service and target language and to set the DeepLX address. `auto` follows the interface language; an explicit language code such as `zh`, `en`, or `ja` overrides it. Save applies the preferences.
+Open Plugins and enable Reasoning translation in the Official group. Open its details to select a translation service and target language and, after choosing DeepLX, to set its address. `auto` follows the interface language; an explicit language code such as `zh`, `en`, or `ja` overrides it. Save applies the preferences.
 
 Expand a Think row to start translation. The row translates completed paragraphs and request-sized prefixes of long streaming paragraphs while retaining the unfinished tail. View original in the translation toolbar switches the expanded body to the source; View translation switches it back. A failed translation leaves the original visible and offers Retry. Disabling the bundle removes its controls and cancels pending calls. Successful translations remain saved in the Session and are reused when the same request is reopened, the page reloads, or the Host restarts.
 

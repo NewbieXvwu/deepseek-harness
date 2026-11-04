@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-实验性 translator 负责显式 Google 或 Bing 路由、Provider 语言标签映射及有界网络请求。Service Definition 与两种 Provider 共用一个包，因为当前消费者使用相同操作与生命周期。可选 GUI 消费者负责设置、段落调度、展开组件内缓存及译文展示。其经过身份验证的 Remote 调用 translator；agent loop 与 Session 事件类型保持独立。
+实验性 translator 负责显式 Google 或 Bing 路由、Provider 语言标签映射及有界网络请求。Service Definition 与两种 Provider 共用一个包，因为当前消费者使用相同操作与生命周期。可选 GUI 消费者负责设置、段落调度、展开组件内缓存及译文展示。其经过身份验证的 Remote 调用 translator；agent loop 与 Session 事件类型保持独立。提供方清单此后又增加了自建 DeepLX 与免登录的 [ChatJimmy 小模型路由](../feature/2026-11-04-keyless-small-model-translation-route.zh.md)；本记录所决定的所有者包、语言标签映射与有界请求保持不变。
 
 配置的默认服务为 Bing。启用 Bundle 允许将展开的思考内容发送给所选服务，插件元数据与设置公开说明接收方。失败时不选择其他 Provider。原文始终可访问；译文不替换持久化 assistant 输出，也不进入模型输入。[可选 Bundle 准入规则](2026-09-21-experimental-capabilities-as-optional-bundles.zh.md) 保证功能在显式选择前保持关闭。
 

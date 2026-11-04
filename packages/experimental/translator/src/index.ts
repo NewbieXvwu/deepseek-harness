@@ -32,6 +32,14 @@ export interface Config {
   bingEndpoint: string
   /** DeepLX-compatible translation endpoint, editable from the reasoning-translation panel and checked when a request uses it. */
   deeplxEndpoint: Volatile<string>
+  /** ChatJimmy anonymous endpoint that receives fragments on the small-model route. */
+  chatjimmyEndpoint: string
+  /** Model id the chatjimmy route selects on the shared ChatJimmy service. */
+  chatjimmyModel: string
+  /** Sampling width sent as `chatOptions.topK` for the tuned chatjimmy prompt. */
+  chatjimmyTopK: number
+  /** Sampling temperature sent as `chatOptions.temperature` for the tuned chatjimmy prompt. */
+  chatjimmyTemperature: number
   /** Deadline covering the request and complete response body, in milliseconds. */
   timeoutMs: number
   /** Maximum UTF-16 code units per request; at least two to admit one supplementary-plane character. */
@@ -55,10 +63,15 @@ export interface Config {
 /** One Host service with explicit routing, cancellation and quiescent unload. */
 export default class Translator extends Service {
   static Config = z.object({
-    provider: z.union(['google', 'bing', 'deeplx', 'deepseek-account', 'deepseek-official', 'llm'] as const).default('bing'),
+    provider: z.union(['google', 'bing', 'deeplx', 'chatjimmy', 'deepseek-account', 'deepseek-official', 'llm'] as const).default('bing'),
     googleEndpoint: z.transform(z.string(), endpoint).default('https://translate.googleapis.com/translate_a/single'),
     bingEndpoint: z.transform(z.string(), endpoint).default('https://edge.microsoft.com/translate/translatetext'),
     deeplxEndpoint: z.string().default('http://127.0.0.1:22330/translate').volatile(),
+    chatjimmyEndpoint: z.transform(z.string(), endpoint).default('https://chatjimmy.ai/api/chat'),
+    chatjimmyModel: z.string().default('llama3.1-8B'),
+    // Greedy sampling measured cleaner than warm sampling on the same prompt, and it keeps a cached fragment reproducible.
+    chatjimmyTopK: z.natural().min(1).default(1),
+    chatjimmyTemperature: z.number().min(0).max(2).default(0),
     timeoutMs: z.natural().min(1).max(2_147_483_647).default(10_000),
     maxTextChars: z.natural().min(2).default(4_000),
     maxResponseBytes: z.natural().min(1).default(1024 * 1024),
@@ -120,7 +133,8 @@ export default class Translator extends Service {
     switch (provider) {
       case 'google':
       case 'bing':
-      case 'deeplx': return { ...base, provider, ...request.sessionId === undefined ? {} : { sessionId: request.sessionId } }
+      case 'deeplx':
+      case 'chatjimmy': return { ...base, provider, ...request.sessionId === undefined ? {} : { sessionId: request.sessionId } }
       case 'deepseek-account':
       case 'deepseek-official':
       case 'llm': {
@@ -155,7 +169,8 @@ export default class Translator extends Service {
           return translateWithModel(this.ctx, spec, this.config, combined, (work) => { this.track(work) }, log, identity)
         case 'google':
         case 'bing':
-        case 'deeplx': {
+        case 'deeplx':
+        case 'chatjimmy': {
           const requestSeq = await log.request(identity)
           combined.throwIfAborted()
           const text = await translateText(spec, this.config, combined)
@@ -171,7 +186,8 @@ export default class Translator extends Service {
       switch (spec.provider) {
         case 'google':
         case 'bing':
-        case 'deeplx': return spec.sessionId === undefined ? translateText(spec, this.config, combined) : inSession(spec.sessionId)
+        case 'deeplx':
+        case 'chatjimmy': return spec.sessionId === undefined ? translateText(spec, this.config, combined) : inSession(spec.sessionId)
         case 'deepseek-account':
         case 'deepseek-official':
         case 'llm': return inSession(spec.sessionId)

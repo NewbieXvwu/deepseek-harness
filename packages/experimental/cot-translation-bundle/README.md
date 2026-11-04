@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Translate expanded reasoning into the interface language or another chosen language. Enable Reasoning translation on the Web or Desktop Plugins page; shipped profiles leave it disabled. Bing is the default provider, and the bundle settings also offer Google and a self-hosted DeepLX endpoint whose address the same panel stores. Original reasoning remains available and stays unchanged in the Session and model input.
+Translate expanded reasoning into the interface language or another chosen language. Enable Reasoning translation on the Web or Desktop Plugins page; shipped profiles leave it disabled. Bing is the default provider, and the bundle settings also offer Google, a self-hosted DeepLX endpoint whose address the same panel stores, and ChatJimmy, a keyless small-model endpoint. Original reasoning remains available and stays unchanged in the Session and model input.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Open Plugins and enable Reasoning translation in the Official group. Open its de
 
 Expand a Think row to start translation. The row translates completed paragraphs and request-sized prefixes of long streaming paragraphs while retaining the unfinished tail. View original in the translation toolbar switches the expanded body to the source; View translation switches it back. A failed translation leaves the original visible and offers Retry. Disabling the bundle removes its controls and cancels pending calls. Successful translations remain saved in the Session and are reused when the same request is reopened, the page reloads, or the Host restarts.
 
-The selected service receives the expanded reasoning, which can contain private code and conversation details. Google, Bing, and DeepLX send source text in POST request bodies. None of the three requires a translation login or an API key managed by dsh, and none guarantees availability or free quotas; a DeepLX request reaches only the address set in this panel or by the deployment. Eligible native `deepseek-flash` routes appear as explicit paid choices using the configured DeepSeek Account or Official API credentials, and a provider and model configured on the Models page appear as a third paid choice once its credential and catalog entry resolve. Each uncached fragment issues one independent query, with thinking disabled where the model can disable it. Reopening reuses saved results; changing provider, language, source or recipe may require another billed query, and a model that keeps thinking bills reasoning the reader never sees. Provider failure never sends the text to another service automatically.
+The selected service receives the expanded reasoning, which can contain private code and conversation details. Google, Bing, DeepLX and ChatJimmy send source text in POST request bodies. None of the four requires a translation login or an API key managed by dsh, and none guarantees availability or free quotas; a DeepLX request reaches only the address set in this panel or by the deployment. ChatJimmy answers about twenty requests per minute and refuses fragments its small model mistranslates, which leaves the original reasoning on screen. Eligible native `deepseek-flash` routes appear as explicit paid choices using the configured DeepSeek Account or Official API credentials, and a provider and model configured on the Models page appear as a third paid choice once its credential and catalog entry resolve. Each uncached fragment issues one independent query, with thinking disabled where the model can disable it. Reopening reuses saved results; changing provider, language, source or recipe may require another billed query, and a model that keeps thinking bills reasoning the reader never sees. Provider failure never sends the text to another service automatically.
 
 -----
 
@@ -66,7 +66,7 @@ Translation records leave original reasoning intact; normal Session activation a
 <a id="known-limitations-and-deferred-work"></a>
 
 - Collapsed summaries remain in the original language. Translation starts when the reader expands the reasoning body; it may change Markdown or code formatting. Original always remains accessible.
-- Anonymous Google, Bing, and DeepLX endpoints may fail, rate-limit requests, or change their response formats. Mainland China connectivity depends on the deployment's network and proxy configuration. Successful translations remain in the Session after collapse, bundle removal, or restart. Experimental records have best-effort retention across future Session-format migrations.
+- Anonymous Google, Bing, DeepLX, and ChatJimmy endpoints may fail, rate-limit requests, or change their response formats. Mainland China connectivity depends on the deployment's network and proxy configuration. Successful translations remain in the Session after collapse, bundle removal, or restart. Experimental records have best-effort retention across future Session-format migrations.
 
 -----
 

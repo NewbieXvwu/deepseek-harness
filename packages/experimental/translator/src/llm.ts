@@ -17,7 +17,7 @@ import { assembledText, auditedFragment, awaitMetadata, deliverTranslation, logE
  * Routes a model choice must not name: the anonymous endpoints own their own selection, and the two built-in DeepSeek
  * routes own their billing identity, so a configured model may not reach either under a second name.
  */
-const RESERVED_ROUTES: readonly string[] = ['google', 'bing', 'deeplx', 'deepseek-account', 'deepseek-official']
+const RESERVED_ROUTES: readonly string[] = ['google', 'bing', 'deeplx', 'chatjimmy', 'deepseek-account', 'deepseek-official']
 
 /** One live model route, pinned to the provider entry and credential that make it usable. */
 interface ModelOwner {

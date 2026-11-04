@@ -1,62 +1,18 @@
-import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { TimeoutReason } from '@deepseek-ai/dsh-timeout'
 import { boot } from '@deepseek-ai/dsh-app-boot'
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { once } from 'node:events'
+import { fixture, json } from './fixture.ts'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import Translator, { TranslationError, type Config, type TranslationSpec } from '../src/index.ts'
+import Translator, { TranslationError, type TranslationSpec } from '../src/index.ts'
 
-type Reply = (req: IncomingMessage, res: ServerResponse, body: string) => void
-/** Fixture config as the profile stores it: the volatile fields are written as their values. */
-type RawConfig = Partial<Omit<Config, 'deeplxEndpoint' | 'llmProvider' | 'llmModel'>>
-  & { readonly deeplxEndpoint?: string; readonly llmProvider?: string; readonly llmModel?: string }
 const cleanups: Array<() => Promise<void>> = []
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
-
-async function fixture(reply: Reply, overrides: RawConfig = {}) {
-  const requests: Array<{ url: URL; method: string | undefined; headers: IncomingMessage['headers']; body: string }> = []
-  const server = createServer((req, res) => {
-    let body = ''
-    req.setEncoding('utf8')
-    req.on('data', (chunk: string) => { body += chunk })
-    req.on('end', () => {
-      requests.push({ url: new URL(req.url!, 'http://localhost'), method: req.method, headers: req.headers, body })
-      reply(req, res, body)
-    })
-  })
-  cleanups.push(async () => {
-    server.closeAllConnections()
-    await new Promise<void>((resolve, reject) => server.close((error) => {
-      if (error === undefined) resolve()
-      else reject(error)
-    }))
-  })
-  server.listen(0, '127.0.0.1')
-  await once(server, 'listening')
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('Missing loopback listener')
-  const base = `http://127.0.0.1:${address.port}`
-  const ctx = new Context()
-  cleanups.push(async () => { await ctx.fiber.dispose() })
-  const raw = { googleEndpoint: `${base}/google?client=legacy&q=stale&sl=fr&tl=ja&dt=x&fixture=retained`,
-    bingEndpoint: `${base}/bing?from=fr`, deeplxEndpoint: `${base}/deeplx?authKey=fixture-key`, ...overrides }
-  const config = Translator.Config(raw)
-  const fiber = ctx.plugin(Translator, raw)
-  await fiber
-  return { ctx, fiber, base, config, requests, translator: ctx.translator }
-}
-
-function json(res: ServerResponse, payload: unknown): void {
-  res.writeHead(200, { 'content-type': 'application/json' })
-  res.end(JSON.stringify(payload))
-}
 
 const googlePayload = [[['你好', 'Hello', null, null], ['，世界。', 'world', null, null]], null, 'en']
 const bingPayload = [{ translations: [{ text: '你好，世界。', to: 'zh-Hans' }] }]
@@ -64,7 +20,7 @@ const deeplxPayload = { code: 200, data: '你好，世界。' }
 
 describe('anonymous translator', () => {
   it('uses explicitly selected Google with automatic detection and combines translated segments', async () => {
-    const { translator, requests } = await fixture((_req, res) => { json(res, googlePayload) })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { json(res, googlePayload) })
     const spec = translator.resolve({ text: 'Hello world.', targetLanguage: 'zh', provider: 'google' })
     expect(spec).toEqual({ text: 'Hello world.', targetLanguage: 'zh', sourceLanguage: 'auto', provider: 'google' })
     expect(translator.maxTextChars).toBe(4000)
@@ -79,7 +35,7 @@ describe('anonymous translator', () => {
   })
 
   it('uses Bing by default and lets an explicit provider override it', async () => {
-    const { translator, requests } = await fixture((req, res) => {
+    const { translator, requests } = await fixture(cleanups, (req, res) => {
       json(res, req.url?.startsWith('/bing') ? bingPayload : googlePayload)
     })
     expect(translator.resolve({ text: 'hello', targetLanguage: 'zh-Hans' }).provider).toBe('bing')
@@ -97,13 +53,13 @@ describe('anonymous translator', () => {
   })
 
   it('maps Simplified and Traditional tags to Bing language codes', async () => {
-    const { translator, requests } = await fixture((_req, res) => { json(res, bingPayload) })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { json(res, bingPayload) })
     await translator.translate(translator.resolve({ text: '你好', targetLanguage: 'zh-HK', sourceLanguage: 'zh-CN', provider: 'bing' }))
     expect(Object.fromEntries(requests[0]!.url.searchParams)).toEqual({ from: 'zh-Hans', to: 'zh-Hant', isEnterpriseClient: 'false' })
   })
 
   it('sends DeepLX JSON text and language fields and retains its endpoint query', async () => {
-    const { translator, requests } = await fixture((_req, res) => { json(res, deeplxPayload) })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { json(res, deeplxPayload) })
     const spec = translator.resolve({ text: 'Hello world.', targetLanguage: 'zh', provider: 'deeplx' })
     expect(spec).toEqual({ text: 'Hello world.', targetLanguage: 'zh', sourceLanguage: 'auto', provider: 'deeplx' })
     expect(await translator.translate(spec)).toBe('你好，世界。')
@@ -118,7 +74,7 @@ describe('anonymous translator', () => {
   })
 
   it('maps DeepLX language codes from Traditional Chinese and regional tags', async () => {
-    const { translator, requests } = await fixture((_req, res) => { json(res, deeplxPayload) })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { json(res, deeplxPayload) })
     await translator.translate(translator.resolve({ text: '你好', targetLanguage: 'zh-HK', sourceLanguage: 'en-US', provider: 'deeplx' }))
     expect(JSON.parse(requests[0]!.body)).toEqual({ text: '你好', source_lang: 'EN-US', target_lang: 'ZH-HANT' })
     await translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'pt-br', sourceLanguage: 'ja', provider: 'deeplx' }))
@@ -126,14 +82,14 @@ describe('anonymous translator', () => {
   })
 
   it.each([null, [], [1], {}, { code: 200 }, { data: 1 }, { data: null }])('rejects malformed DeepLX response %j', async (payload) => {
-    const { translator, requests } = await fixture((_req, res) => { json(res, payload) })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { json(res, payload) })
     await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh', provider: 'deeplx' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_INVALID_RESPONSE' }))
     expect(requests).toHaveLength(1)
   })
 
   it('returns empty text locally and accepts the exact UTF-16 limit', async () => {
-    const { translator, requests } = await fixture((_req, res) => { json(res, googlePayload) }, { maxTextChars: 2, provider: 'google' })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { json(res, googlePayload) }, { maxTextChars: 2, provider: 'google' })
     expect(await translator.translate(translator.resolve({ text: '', targetLanguage: 'zh' }))).toBe('')
     expect(requests).toHaveLength(0)
     await translator.translate(translator.resolve({ text: '😀', targetLanguage: 'zh' }))
@@ -145,28 +101,28 @@ describe('anonymous translator', () => {
   })
 
   it.each([400, 429, 503, 304])('reports HTTP %s without provider error content or fallback', async (status) => {
-    const { translator, requests } = await fixture((_req, res) => { res.writeHead(status); res.end('private source text') })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { res.writeHead(status); res.end('private source text') })
     await expect(translator.translate(translator.resolve({ text: 'private source text', targetLanguage: 'zh', provider: 'google' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_HTTP_ERROR', message: `google translation failed (HTTP ${status})` }))
     expect(requests).toHaveLength(1)
   })
 
   it('rejects redirects without contacting the redirected endpoint', async () => {
-    const { translator, requests } = await fixture((_req, res) => { res.writeHead(307, { location: '/other-provider' }); res.end() })
+    const { translator, requests } = await fixture(cleanups, (_req, res) => { res.writeHead(307, { location: '/other-provider' }); res.end() })
     await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_REQUEST_FAILED' }))
     expect(requests).toHaveLength(1)
   })
 
   it('normalizes a disconnected provider into a safe transport failure', async () => {
-    const { translator } = await fixture((req) => { req.socket.destroy() })
+    const { translator } = await fixture(cleanups, (req) => { req.socket.destroy() })
     await expect(translator.translate(translator.resolve({ text: 'private source text', targetLanguage: 'zh', provider: 'google' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_REQUEST_FAILED', message: 'google translation request failed' }))
   })
 
   it('rejects missing bodies and invalid JSON', async () => {
     let empty = true
-    const { translator } = await fixture((_req, res) => {
+    const { translator } = await fixture(cleanups, (_req, res) => {
       if (empty) { res.writeHead(204); res.end() } else res.end('not JSON')
     })
     const spec = translator.resolve({ text: 'hello', targetLanguage: 'zh' })
@@ -176,14 +132,14 @@ describe('anonymous translator', () => {
   })
 
   it.each([null, {}, [], [null], [[]], [['not a segment']], [[[null]]]])('rejects malformed Google response %j', async (payload) => {
-    const { translator } = await fixture((_req, res) => { json(res, payload) })
+    const { translator } = await fixture(cleanups, (_req, res) => { json(res, payload) })
     await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh', provider: 'google' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_INVALID_RESPONSE' }))
   })
 
   it.each([null, [], [1], [null], [{}], [{ translations: null }], [{ translations: [] }], [{ translations: [1] }],
     [{ translations: [null] }], [{ translations: [{}] }], [{ translations: [{ text: 1 }] }]])('rejects malformed Bing response %j', async (payload) => {
-    const { translator } = await fixture((_req, res) => { json(res, payload) })
+    const { translator } = await fixture(cleanups, (_req, res) => { json(res, payload) })
     await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh', provider: 'bing' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_INVALID_RESPONSE' }))
   })
@@ -191,9 +147,9 @@ describe('anonymous translator', () => {
   it('enforces response-byte limits on multibyte text at and below the exact limit', async () => {
     const payload = [[['中']]]
     const bytes = Buffer.byteLength(JSON.stringify(payload))
-    const exact = await fixture((_req, res) => { json(res, payload) }, { maxResponseBytes: bytes })
+    const exact = await fixture(cleanups, (_req, res) => { json(res, payload) }, { maxResponseBytes: bytes })
     expect(await exact.translator.translate(exact.translator.resolve({ text: 'hello', targetLanguage: 'zh', provider: 'google' }))).toBe('中')
-    const short = await fixture((_req, res) => { json(res, payload) }, { maxResponseBytes: bytes - 1 })
+    const short = await fixture(cleanups, (_req, res) => { json(res, payload) }, { maxResponseBytes: bytes - 1 })
     await expect(short.translator.translate(short.translator.resolve({ text: 'hello', targetLanguage: 'zh', provider: 'google' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_RESPONSE_LIMIT' }))
   })
@@ -201,7 +157,7 @@ describe('anonymous translator', () => {
   it.each([new Error('consumer stopped translation'), new TimeoutReason('TRANSLATION_TIMEOUT', 1)])(
     'preserves caller cancellation before admission and during response intake: %s', async (reason) => {
       const entered = Promise.withResolvers<undefined>()
-      const { translator, requests } = await fixture((_req, res) => { res.writeHead(200); res.write('['); entered.resolve(undefined) })
+      const { translator, requests } = await fixture(cleanups, (_req, res) => { res.writeHead(200); res.write('['); entered.resolve(undefined) })
       const spec = translator.resolve({ text: 'hello', targetLanguage: 'zh' })
       const already = new AbortController()
       already.abort(reason)
@@ -216,7 +172,7 @@ describe('anonymous translator', () => {
     })
 
   it('applies its deadline while a provider leaves the response unfinished', async () => {
-    const { translator } = await fixture((_req, res) => { res.writeHead(200); res.write('[') }, { timeoutMs: 40 })
+    const { translator } = await fixture(cleanups, (_req, res) => { res.writeHead(200); res.write('[') }, { timeoutMs: 40 })
     await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh' })))
       .rejects.toThrow(expect.objectContaining({ name: 'TranslationError', code: 'TRANSLATION_TIMEOUT',
         message: 'bing translation timed out after 40ms' }))
@@ -224,7 +180,7 @@ describe('anonymous translator', () => {
 
   it('unloads the service after aborting and joining accepted translations', async () => {
     const entered = Promise.withResolvers<undefined>()
-    const { ctx, fiber, translator } = await fixture((_req, res) => { res.writeHead(200); res.write('['); entered.resolve(undefined) })
+    const { ctx, fiber, translator } = await fixture(cleanups, (_req, res) => { res.writeHead(200); res.write('['); entered.resolve(undefined) })
     const spec = translator.resolve({ text: 'hello', targetLanguage: 'zh' })
     const pending = translator.translate(spec)
     const rejection = expect(pending).rejects.toThrow('Translator service disposed')
@@ -257,7 +213,7 @@ describe('anonymous translator', () => {
   })
 
   it('boots a real Loader composition and translates through its configured provider', async () => {
-    const { config, requests } = await fixture((_req, res) => { json(res, bingPayload) })
+    const { config, requests } = await fixture(cleanups, (_req, res) => { json(res, bingPayload) })
     const root = await mkdtemp(join(tmpdir(), 'dsh-translator-composition-'))
     cleanups.push(async () => { await rm(root, { recursive: true, force: true }) })
     const source = await readFile(new URL('./fixtures/cordis.yml', import.meta.url), 'utf8')
@@ -276,7 +232,7 @@ describe('anonymous translator', () => {
   })
 
   it('retargets DeepLX through a live configuration change without remounting', async () => {
-    const { base, requests } = await fixture((_req, res) => { json(res, deeplxPayload) })
+    const { base, requests } = await fixture(cleanups, (_req, res) => { json(res, deeplxPayload) })
     const root = await mkdtemp(join(tmpdir(), 'dsh-translator-deeplx-'))
     cleanups.push(async () => { await rm(root, { recursive: true, force: true }) })
     const path = join(root, 'cordis.yml')
@@ -298,7 +254,7 @@ describe('anonymous translator', () => {
   })
 
   it('rejects an unusable DeepLX address before dispatch and names no address in the failure', async () => {
-    const { translator, requests } = await fixture(() => { throw new Error('an unusable endpoint must not dispatch') },
+    const { translator, requests } = await fixture(cleanups, () => { throw new Error('an unusable endpoint must not dispatch') },
       { provider: 'deeplx', deeplxEndpoint: 'https://user:secret@deeplx.invalid/' })
     await expect(translator.translate(translator.resolve({ text: 'hello', targetLanguage: 'zh' })))
       .rejects.toThrow(expect.objectContaining({ code: 'TRANSLATION_ENDPOINT_INVALID' }))

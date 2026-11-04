@@ -2,7 +2,7 @@
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 
 /** Anonymous endpoint protocol selected for one translation. */
-export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx'
+export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx' | 'chatjimmy'
 
 /** Built-in DeepSeek credential routes, admitted by their exact `deepseek-flash` catalog membership. */
 export type NativeTranslationProvider = 'deepseek-account' | 'deepseek-official'

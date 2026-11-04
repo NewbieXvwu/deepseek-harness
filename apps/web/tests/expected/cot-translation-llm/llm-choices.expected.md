@@ -18,6 +18,7 @@
   - option "Bing"
   - option "Google"
   - option "DeepLX"
+  - option "ChatJimmy"
   - option "LLM API" [selected]
 - text: 翻译模型 已覆盖
 - button "恢复默认"

@@ -142,6 +142,28 @@ it('offers both version-free paid routes only when eligible and keeps selection 
   } finally { view.unmount(); form.dispose() }
 })
 
+it('offers ChatJimmy as a keyless service without an address or model row', () => {
+  const scope = stubConfigForm<CotTranslationPreferences>(), translator = stubConfigForm<TranslatorPreference>()
+  scope.publish(selection('bing', 8))
+  translator.publish(translatorEntry(5))
+  const form = new TranslationPreferencesForm(scope.scope, translator.scope)
+  const { view, props, hooks } = renderSettings(form.inject(), providersOf('bing', 'google', 'deeplx', 'chatjimmy'), routesOf([]))
+  try {
+    expect(view.getByRole('option', { name: en.chatjimmy })).toHaveProperty('value', 'chatjimmy')
+    expect(en.anonymousNotice).toContain('ChatJimmy')
+    expect(zh.anonymousNotice).toContain('ChatJimmy')
+    fireEvent.change(view.getByLabelText(en.provider), { target: { value: 'chatjimmy' } })
+    view.rerender(<TranslationSettings {...props} />)
+    // The deployment owns this address and its model id, so the panel stages the service choice alone.
+    expect(view.queryByLabelText(en.deeplxEndpoint)).toBeNull()
+    expect(view.queryByLabelText(en.llmModel)).toBeNull()
+    expect(view.getByText(en.anonymousNotice)).toBeTruthy()
+    expect(hooks.translationForm.getSnapshot().provider.text).toBe('chatjimmy')
+    expect(hooks.translationForm.getSnapshot().endpointVisible).toBe(false)
+    expect(hooks.translationForm.getSnapshot().modelVisible).toBe(false)
+  } finally { view.unmount(); form.dispose() }
+})
+
 it('lists DeepLX as a keyless service and offers the model picker only over routes the Host serves', () => {
   const scope = stubConfigForm<CotTranslationPreferences>(), translator = stubConfigForm<TranslatorPreference>()
   scope.publish(selection('bing', 8))

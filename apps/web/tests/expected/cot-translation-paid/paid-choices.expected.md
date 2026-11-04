@@ -18,6 +18,7 @@
   - option "Bing"
   - option "Google"
   - option "DeepLX"
+  - option "ChatJimmy"
   - option "DeepSeek Flash · 账号（付费）" [selected]
 - text: 目标语言 已覆盖
 - button "恢复默认"

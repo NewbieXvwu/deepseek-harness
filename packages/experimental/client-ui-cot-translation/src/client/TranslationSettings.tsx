@@ -26,6 +26,7 @@ function providerLabel(provider: string, t: TranslationSettingsProps['t']): stri
     case 'bing': return t('bing')
     case 'google': return t('google')
     case 'deeplx': return t('deeplx')
+    case 'chatjimmy': return t('chatjimmy')
     case 'llm': return t('llm')
     case 'deepseek-account': return t('deepseekAccount')
     case 'deepseek-official': return t('deepseekOfficial')

@@ -1,13 +1,14 @@
-/** Anonymous provider protocols, bounded JSON intake and normalized Chinese language tags. */
+/** Anonymous provider protocols, bounded JSON and plain-text intake, and normalized Chinese language tags. */
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { Config } from './index.ts'
 import type { AnonymousTranslationProvider, AnonymousTranslationSpec, TranslationProvider } from './types.ts'
 import { TranslationError } from './error.ts'
 import { createHash } from 'node:crypto'
+import { chatjimmyBody, chatjimmyRecipe, chatjimmyTranslation } from './chatjimmy.ts'
 
 /** Anonymous endpoint choices, in the order the preferences list presents them. */
-export const ANONYMOUS_PROVIDERS = ['bing', 'google', 'deeplx'] as const satisfies readonly AnonymousTranslationProvider[]
+export const ANONYMOUS_PROVIDERS = ['bing', 'google', 'deeplx', 'chatjimmy'] as const satisfies readonly AnonymousTranslationProvider[]
 
 /**
  * Whether the route reaches a deployment-configured endpoint with no credential the Host manages.
@@ -15,16 +16,16 @@ export const ANONYMOUS_PROVIDERS = ['bing', 'google', 'deeplx'] as const satisfi
  * @returns true when the route uses an anonymous endpoint protocol and its request bounds.
  */
 export function isAnonymousProvider(provider: TranslationProvider): provider is AnonymousTranslationProvider {
-  return provider === 'google' || provider === 'bing' || provider === 'deeplx'
+  return provider === 'google' || provider === 'bing' || provider === 'deeplx' || provider === 'chatjimmy'
 }
 
 /** Request-revision tag retained in durable translation identities per endpoint protocol. */
-const ANONYMOUS_REVISIONS: Record<AnonymousTranslationProvider, string> = {
+const ANONYMOUS_REVISIONS: Record<Exclude<AnonymousTranslationProvider, 'chatjimmy'>, string> = {
   google: 'google-form-v1', bing: 'bing-edge-v1', deeplx: 'deeplx-json-v1',
 }
 
 /** Query parameters the protocol sets per request, so they never enter the endpoint fingerprint. */
-const ANONYMOUS_OWNED_PARAMS: Record<AnonymousTranslationProvider, readonly string[]> = {
+const ANONYMOUS_OWNED_PARAMS: Record<Exclude<AnonymousTranslationProvider, 'chatjimmy'>, readonly string[]> = {
   google: ['client', 'sl', 'tl', 'dt', 'q'], bing: ['from', 'to', 'isEnterpriseClient'],
   deeplx: ['text', 'source_lang', 'target_lang', 'authKey', 'auth_key'],
 }
@@ -48,6 +49,7 @@ function anonymousEndpoint(provider: AnonymousTranslationProvider, config: Confi
     case 'bing': return config.bingEndpoint
     // Read per request: the reasoning-translation panel can retarget DeepLX while the service stays mounted.
     case 'deeplx': return config.deeplxEndpoint.get()
+    case 'chatjimmy': return config.chatjimmyEndpoint
     /* v8 ignore next -- AnonymousTranslationProvider is a closed union resolved by Config validation. */
     default: return assertNever(provider)
   }
@@ -76,9 +78,11 @@ function endpointUrl(provider: AnonymousTranslationProvider, config: Config): UR
  * Identify anonymous request semantics without provider-specific language normalization.
  * @param provider - explicitly resolved endpoint route.
  * @param config - deployment endpoints; raw endpoint values are excluded from stored recipes.
- * @returns protocol revision and effective endpoint fingerprint for durable result reuse.
+ * @returns protocol revision and effective endpoint fingerprint for durable result reuse, or for chatjimmy its
+ *   prompt revision with the model id and decoding settings that its translation depends on.
  */
 export function anonymousRecipe(provider: AnonymousTranslationProvider, config: Config): string {
+  if (provider === 'chatjimmy') return chatjimmyRecipe(config)
   const url = endpointUrl(provider, config)
   for (const key of ANONYMOUS_OWNED_PARAMS[provider]) url.searchParams.delete(key)
   return JSON.stringify([ANONYMOUS_REVISIONS[provider], createHash('sha256').update(url.href).digest('hex')])
@@ -102,16 +106,19 @@ function language(tag: string, provider: AnonymousTranslationProvider): string {
 
 function requestFor(spec: AnonymousTranslationSpec, config: Config): { url: URL; init: RequestInit } {
   const url = endpointUrl(spec.provider, config)
-  const source = language(spec.sourceLanguage, spec.provider)
-  const target = language(spec.targetLanguage, spec.provider)
   switch (spec.provider) {
+    case 'chatjimmy': return { url,
+      init: { method: 'POST', body: JSON.stringify(chatjimmyBody(spec, config)),
+        headers: { 'content-type': 'application/json' } } }
     case 'google': {
-      const form = new URLSearchParams({ client: 'gtx', sl: source, tl: target, dt: 't', q: spec.text })
+      const form = new URLSearchParams({ client: 'gtx', sl: language(spec.sourceLanguage, spec.provider),
+        tl: language(spec.targetLanguage, spec.provider), dt: 't', q: spec.text })
       for (const key of form.keys()) url.searchParams.delete(key)
       return { url, init: { method: 'POST', body: form.toString(),
         headers: { 'content-type': 'application/x-www-form-urlencoded' } } }
     }
     case 'bing': {
+      const source = language(spec.sourceLanguage, spec.provider), target = language(spec.targetLanguage, spec.provider)
       if (source !== 'auto') url.searchParams.set('from', source)
       else url.searchParams.delete('from')
       url.searchParams.set('to', target)
@@ -120,7 +127,9 @@ function requestFor(spec: AnonymousTranslationSpec, config: Config): { url: URL;
         headers: { 'content-type': 'application/json' } } }
     }
     case 'deeplx': return { url,
-      init: { method: 'POST', body: JSON.stringify({ text: spec.text, source_lang: source, target_lang: target }),
+      init: { method: 'POST',
+        body: JSON.stringify({ text: spec.text, source_lang: language(spec.sourceLanguage, spec.provider),
+          target_lang: language(spec.targetLanguage, spec.provider) }),
         headers: { 'content-type': 'application/json' } } }
     /* v8 ignore next -- TranslationProvider is a closed typed union; JSON/config validation owns admission. */
     default: return assertNever(spec.provider)
@@ -131,7 +140,7 @@ function invalidResponse(provider: AnonymousTranslationProvider): TranslationErr
   return new TranslationError('TRANSLATION_INVALID_RESPONSE', `${provider} returned an invalid translation response`)
 }
 
-function translationOf(payload: unknown, provider: AnonymousTranslationProvider): string {
+function translationOf(payload: unknown, provider: Exclude<AnonymousTranslationProvider, 'chatjimmy'>): string {
   switch (provider) {
     case 'deeplx': {
       if (typeof payload !== 'object' || payload === null || !('data' in payload)) throw invalidResponse(provider)
@@ -168,7 +177,7 @@ function translationOf(payload: unknown, provider: AnonymousTranslationProvider)
   }
 }
 
-async function responseJson(response: Response, config: Config, provider: AnonymousTranslationProvider): Promise<unknown> {
+async function responseText(response: Response, config: Config, provider: AnonymousTranslationProvider): Promise<string> {
   if (response.body === null) throw invalidResponse(provider)
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
@@ -187,12 +196,25 @@ async function responseJson(response: Response, config: Config, provider: Anonym
   } finally {
     reader.releaseLock()
   }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+function responseJson(text: string, provider: AnonymousTranslationProvider): unknown {
   try {
-    const payload: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    const payload: unknown = JSON.parse(text)
     return payload
   } catch (_error) {
     throw new TranslationError('TRANSLATION_INVALID_RESPONSE', `${provider} returned invalid translation JSON`)
   }
+}
+
+/**
+ * Whether the protocol returns the translation inside a JSON body rather than as the whole reply text.
+ * @param provider - anonymous route selected for this request.
+ * @returns true for the endpoint protocols whose reply needs JSON parsing.
+ */
+function isJsonReply(provider: AnonymousTranslationProvider): provider is Exclude<AnonymousTranslationProvider, 'chatjimmy'> {
+  return provider !== 'chatjimmy'
 }
 
 /**
@@ -213,9 +235,10 @@ export async function translateText(spec: AnonymousTranslationSpec, config: Conf
       await response.body?.cancel()
       throw new TranslationError('TRANSLATION_HTTP_ERROR', `${spec.provider} translation failed (HTTP ${response.status})`)
     }
-    const payload = await responseJson(response, config, spec.provider)
+    const body = await responseText(response, config, spec.provider)
     timeout.signal.throwIfAborted()
-    return translationOf(payload, spec.provider)
+    return isJsonReply(spec.provider) ? translationOf(responseJson(body, spec.provider), spec.provider)
+      : chatjimmyTranslation(body, spec)
   } catch (error) {
     const expired = timeoutOf(timeout.signal, 'TRANSLATION_TIMEOUT')
     if (expired !== undefined && expired !== signal.reason) {

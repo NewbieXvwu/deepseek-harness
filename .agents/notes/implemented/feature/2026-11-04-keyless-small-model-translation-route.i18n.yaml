@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-04-keyless-small-model-translation-route.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-04-keyless-small-model-translation-route.md
+/agent-note-a-keyless-small-model-route-refuses-rather-than-serves-bad-translations:
+  en: 487fe2e99c977625
+  zh: dbcd7e2f47d6d341
+/agent-note-a-keyless-small-model-route-refuses-rather-than-serves-bad-translations/problem:
+  en: 36e8786e98535ee3
+  zh: 8efacd63790836ad
+/agent-note-a-keyless-small-model-route-refuses-rather-than-serves-bad-translations/decision:
+  en: fe297029785e43a8
+  zh: 7df10dd94b661bee
+/agent-note-a-keyless-small-model-route-refuses-rather-than-serves-bad-translations/alternatives-considered:
+  en: d093cca86687f5f4
+  zh: de854796629838fa
+/agent-note-a-keyless-small-model-route-refuses-rather-than-serves-bad-translations/consequences:
+  en: c3b32b7c8380d340
+  zh: 036df09716a27c8e

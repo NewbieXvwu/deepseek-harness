@@ -106,7 +106,7 @@ describe('common paid translation persistence', () => {
       await b.restart({ withNativeOwners: unavailable !== 'native-owner' })
       expect(b.ctx).not.toBe(oldContext)
       expect(b.ctx.sessions.list()).toEqual([])
-      expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
+      expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'chatjimmy'])
       expect(await b.ctx.translator.translate(specification())).toBe('翻译结果')
       expect(await b.readEvents(id)).toEqual(committed)
       expect(b.requests).toHaveLength(1)

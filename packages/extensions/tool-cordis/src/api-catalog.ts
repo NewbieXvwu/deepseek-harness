@@ -5564,7 +5564,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnonymousTranslationProvider',
-    declaration: 'export type AnonymousTranslationProvider = \'google\' | \'bing\' | \'deeplx\';',
+    declaration: 'export type AnonymousTranslationProvider = \'google\' | \'bing\' | \'deeplx\' | \'chatjimmy\';',
   },
   {
     name: 'AnonymousTranslationSpec',

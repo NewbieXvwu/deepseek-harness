@@ -1483,6 +1483,14 @@ export interface Config {
   bingEndpoint: string
   /** DeepLX-compatible translation endpoint, editable from the reasoning-translation panel and checked when a request uses it. */
   deeplxEndpoint: Volatile<string>
+  /** ChatJimmy anonymous endpoint that receives fragments on the small-model route. */
+  chatjimmyEndpoint: string
+  /** Model id the chatjimmy route selects on the shared ChatJimmy service. */
+  chatjimmyModel: string
+  /** Sampling width sent as `chatOptions.topK` for the tuned chatjimmy prompt. */
+  chatjimmyTopK: number
+  /** Sampling temperature sent as `chatOptions.temperature` for the tuned chatjimmy prompt. */
+  chatjimmyTemperature: number
   /** Deadline covering the request and complete response body, in milliseconds. */
   timeoutMs: number
   /** Maximum UTF-16 code units per request; at least two to admit one supplementary-plane character. */
@@ -1507,7 +1515,7 @@ export interface Config {
 export type TranslationProvider = AnonymousTranslationProvider | ModelTranslationProvider
 
 /** Anonymous endpoint protocol selected for one translation. */
-export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx'
+export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx' | 'chatjimmy'
 
 /** Model routes that translate a fragment: the built-in DeepSeek routes and one configured provider and model. */
 export type ModelTranslationProvider = NativeTranslationProvider | 'llm'

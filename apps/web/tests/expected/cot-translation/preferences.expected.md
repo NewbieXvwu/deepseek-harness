@@ -11,12 +11,13 @@
   - paragraph:
     - img "展开的思考行从英文翻译成中文，并显示“查看原文”按钮"
 - paragraph: 展开的思考内容会发送给所选翻译服务，可能包含私有代码或对话细节。
-- paragraph: Bing、Google 和 DeepLX 无需额外登录或 API key，DeepLX 使用本部署配置的翻译端点；这些端点可能拒绝或限制请求
+- paragraph: Bing、Google、DeepLX 和 ChatJimmy 都无需额外登录或 API key，DeepLX 使用本部署配置的翻译端点；ChatJimmy 调用一个免费的小型托管模型，思考内容译文可能不准确且会被限速；这些端点都可能拒绝或限制请求
 - text: 翻译服务
 - combobox "翻译服务":
   - option "Bing" [selected]
   - option "Google"
   - option "DeepLX"
+  - option "ChatJimmy"
 - text: 目标语言
 - textbox "目标语言":
   - /placeholder: ""

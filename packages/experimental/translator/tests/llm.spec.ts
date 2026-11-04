@@ -29,7 +29,7 @@ describe('configured model translation', () => {
   it('dispatches one audited fragment and reuses the saved translation on the second read', async () => {
     const b = await mount(LLM_FIXTURE_MODELS.off)
     expect(await b.ctx.translator.availableProviders())
-      .toEqual(['bing', 'google', 'deeplx', 'deepseek-account', 'deepseek-official', 'llm'])
+      .toEqual(['bing', 'google', 'deeplx', 'chatjimmy', 'deepseek-account', 'deepseek-official', 'llm'])
     expect(await b.translate('llm')).toBe('翻译结果')
     expect(await b.translate('llm', 'Original paragraph')).toBe('翻译结果')
     expect(b.requests).toHaveLength(1)
@@ -181,13 +181,14 @@ describe('configured model translation', () => {
 
   it.each([
     ['reserved built-in', { llmProvider: 'deepseek-official', llmModel: 'deepseek-flash' }],
+    ['keyless anonymous endpoint', { llmProvider: 'chatjimmy', llmModel: 'llama3.1-8B' }],
     ['unknown provider', { llmProvider: 'not-a-route', llmModel: 'anything' }],
     ['dormant catalog provider', { llmProvider: 'openai', llmModel: 'gpt-5' }],
     ['model off the catalog', { llmProvider: LLM_FIXTURE_PROVIDER, llmModel: 'acme-retired' }],
     ['one half of a route', { llmProvider: LLM_FIXTURE_PROVIDER, llmModel: '' }],
   ] as const)('does not offer the route when the selection names %s', async (_name, selection) => {
     const b = await paidFixture(cleanups, { llmRoutes: llmRouteProfiles, translator: { provider: 'llm', ...selection } })
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'deepseek-account', 'deepseek-official'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'chatjimmy', 'deepseek-account', 'deepseek-official'])
     await expect(b.translate('llm')).rejects.toMatchObject({ code: 'TRANSLATION_UNAVAILABLE' })
     expect(b.requests).toEqual([])
   })
@@ -305,7 +306,7 @@ describe('configured model translation', () => {
       if (kind === 'owned') await vi.advanceTimersByTimeAsync(40)
       else caller.abort(reason)
       const result = await outcome
-      if (kind === 'owned') expect(result).toEqual(['bing', 'google', 'deeplx', 'deepseek-account', 'deepseek-official'])
+      if (kind === 'owned') expect(result).toEqual(['bing', 'google', 'deeplx', 'chatjimmy', 'deepseek-account', 'deepseek-official'])
       else expect(result).toBe(reason)
     } finally { release.resolve(undefined); vi.useRealTimers() }
   })
@@ -317,7 +318,7 @@ describe('configured model translation', () => {
       if (provider !== LLM_FIXTURE_PROVIDER) return original(provider)
       throw new Error('private catalog error')
     })
-    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'deepseek-account', 'deepseek-official'])
+    expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'chatjimmy', 'deepseek-account', 'deepseek-official'])
     vi.spyOn(b.ctx.llm, 'prepareCall').mockRejectedValueOnce(new Error('private credentials or original prompt'))
     await expect(b.translate('llm')).rejects.toMatchObject({ code: 'TRANSLATION_REQUEST_FAILED', message: 'Model translation request failed' })
   })
@@ -326,7 +327,7 @@ describe('configured model translation', () => {
     const ctx = new Context()
     cleanups.push(async () => { await ctx.fiber.dispose() })
     await ctx.plugin(Translator, { provider: 'llm', llmProvider: LLM_FIXTURE_PROVIDER, llmModel: LLM_FIXTURE_MODELS.off })
-    expect(await ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx'])
+    expect(await ctx.translator.availableProviders()).toEqual(['bing', 'google', 'deeplx', 'chatjimmy'])
     expect(() => ctx.translator.resolve({ text: 'source', targetLanguage: 'zh', provider: 'llm' }))
       .toThrow(expect.objectContaining({ code: 'TRANSLATION_SESSION_REQUIRED' }))
   })

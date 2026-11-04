@@ -10,7 +10,7 @@ Readers need reasoning in their chosen language without another model credential
 
 ## Decision
 
-The experimental translator owns explicit Google or Bing routing, provider-language normalization, and bounded network requests. Its Service Definition and both providers share one package because their current consumers use the same operation and lifetime. The optional GUI consumer owns settings, paragraph scheduling, per-disclosure caches, and translated display. Its authenticated Remote calls the translator; the agent loop and Session event types remain independent.
+The experimental translator owns explicit Google or Bing routing, provider-language normalization, and bounded network requests. Its Service Definition and both providers share one package because their current consumers use the same operation and lifetime. The optional GUI consumer owns settings, paragraph scheduling, per-disclosure caches, and translated display. Its authenticated Remote calls the translator; the agent loop and Session event types remain independent. The provider list has since grown to a self-hosted DeepLX and the keyless [ChatJimmy small-model route](../feature/2026-11-04-keyless-small-model-translation-route.md); the owning package, language normalization and bounded requests decided here are unchanged.
 
 Bing is the configured default. Enabling the bundle permits transmission of expanded reasoning to the chosen service, disclosed in plugin metadata and settings. Failure never selects another provider. Original remains available; translated text neither replaces persisted assistant output nor enters model input. The [optional-bundle admission policy](2026-09-21-experimental-capabilities-as-optional-bundles.md) keeps the feature disabled until selected.
 

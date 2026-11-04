@@ -8,13 +8,20 @@ import type { InjectParams, StoredEntry } from '@deepseek-ai/dsh-client-ui-slots
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import { RemoteError, type RemoteResult, type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
-import type { CotTranslationPreferences, CotTranslationSnapshot, DeeplxEndpointPreference } from '../src/preferences.ts'
+import type { CotTranslationPreferences, CotTranslationSnapshot, TranslatorPreference } from '../src/preferences.ts'
 import type { TranslationBodyInjected } from '../src/client/TranslationBody.tsx'
 import type { TranslationFormInjected } from '../src/client/preferences-form.ts'
 import { inject, mountTranslation } from '../src/client/mount.ts'
 
 const contribution: TypertRemoteContribution = { package: '@deepseek-ai/dsh-experimental-client-ui-cot-translation', descriptors: [] }
 const sourceSessionId = SessionId('reasoning-source')
+
+/** The model-page catalog fields the panel projects into route choices. */
+interface FixtureModelCatalog {
+  routableProviders: readonly string[]
+  groups: readonly { id: string; name: string; models: readonly { id: string; name: string }[] }[]
+  failures: readonly unknown[]
+}
 
 async function fixture(failure = false, preferences: CotTranslationPreferences = { provider: 'bing', targetLanguage: 'auto' }) {
   const ctx = new Context(), unmount = vi.fn(async () => {})
@@ -36,11 +43,14 @@ async function fixture(failure = false, preferences: CotTranslationPreferences =
   const limits = vi.fn<(signal: AbortSignal) => Promise<RemoteResult<CotTranslationSnapshot>>>(async () => failure ? { ok: false, error: new RemoteError('cotTranslation/failed', 'limits unavailable', {}) }
     : { ok: true, value: catalog })
   const translate = vi.fn(async () => ({ ok: true, value: 'translated' }))
+  const emptyCatalog: FixtureModelCatalog = { routableProviders: [], groups: [], failures: [] }
+  const modelCatalog = vi.fn(async (): Promise<RemoteResult<FixtureModelCatalog>> => ({ ok: true, value: emptyCatalog }))
   ctx.provide('remote.cotTranslation', { limits, translate } as never)
+  ctx.provide('remote.session', { modelCatalog } as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
-  const scope = stubConfigForm<CotTranslationPreferences>(), endpoint = stubConfigForm<DeeplxEndpointPreference>()
+  const scope = stubConfigForm<CotTranslationPreferences>(), translator = stubConfigForm<TranslatorPreference>()
   ctx.provide('configForms', { get: (name: string) => {
-    if (name === 'translator') return endpoint.scope
+    if (name === 'translator') return translator.scope
     expect(name).toBe('cot-translation'); return scope.scope
   } } as never)
   await ctx.plugin(SlotRegistry)
@@ -48,7 +58,7 @@ async function fixture(failure = false, preferences: CotTranslationPreferences =
     'conversation.chat.reasoning.body': { kind: 'single', scope: 'session' },
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
   } } as never, () => null)
-  return { ctx, limits, translate, unmount, scope, endpoint, listeners,
+  return { ctx, limits, translate, unmount, scope, translator, modelCatalog, listeners,
     setCatalog: (value: CotTranslationSnapshot) => { catalog = value },
     invalidate: () => { for (const listener of listeners.get('settings/document-updated') ?? []) listener() },
     emitEvent: (event: string) => { for (const listener of listeners.get(event) ?? []) listener() } }
@@ -116,7 +126,7 @@ it('registers translated reasoning and preferences, adopts accepted choices, and
     expect(b.ctx.slots.entries('conversation.chat.reasoning.body')).toHaveLength(0)
     expect(b.ctx.slots.entries('plugins.bundle.config')).toHaveLength(0)
     expect(b.scope.listenerCount()).toBe(0)
-    expect(b.endpoint.listenerCount()).toBe(0)
+    expect(b.translator.listenerCount()).toBe(0)
     expect(b.listeners.size).toBe(0)
     expect(b.unmount).toHaveBeenCalledOnce()
   } finally { await b.ctx.fiber.dispose() }
@@ -129,7 +139,7 @@ it.each(['limits', 'registration'])('rolls back the Remote when %s fails', async
     await expect(mountTranslation(b.ctx, contribution)).rejects.toThrow()
     expect(b.unmount).toHaveBeenCalledOnce()
     expect(b.scope.listenerCount()).toBe(0)
-    expect(b.endpoint.listenerCount()).toBe(0)
+    expect(b.translator.listenerCount()).toBe(0)
   } finally { await b.ctx.fiber.dispose() }
 })
 
@@ -150,6 +160,12 @@ it('loads the browser entry through its generated optional Remote contribution',
   }
 })
 
+
+it('declares the remote namespace its model route read resolves through', () => {
+  // The Web Client hands a fiber no remote namespace it did not declare, so an omitted entry hides every model
+  // route from the panel while no request fails loudly; the catalog read above proves the read itself works.
+  expect(inject).toContain('remote.session')
+})
 
 it('uses Host Google preferences while the settings form is loading', async () => {
   const preferences: CotTranslationPreferences = { provider: 'google', targetLanguage: 'ja' }
@@ -224,7 +240,7 @@ it.each(['resolve', 'reject'] as const)('cancels setup, joins the pending read, 
     await disposing
     expect(b.ctx.slots.entries('conversation.chat.reasoning.body')).toHaveLength(0)
     expect(b.scope.listenerCount()).toBe(0)
-    expect(b.endpoint.listenerCount()).toBe(0)
+    expect(b.translator.listenerCount()).toBe(0)
     expect(b.listeners.size).toBe(0)
     expect(b.unmount).toHaveBeenCalledOnce()
   } finally {
@@ -416,5 +432,101 @@ it.each(['llm/adapters-updated', 'deepseek-account/session-expired', 'deepseek-a
     await vi.waitFor(() => { expect(hooks.availableProviders.getSnapshot()).toContain('deepseek-official') })
     expect(b.translate).not.toHaveBeenCalled()
     await dispose()
+  } finally { await b.ctx.fiber.dispose() }
+})
+
+/** Model catalog projection the panel flattens into route choices. */
+const MODEL_GROUPS: FixtureModelCatalog = { routableProviders: ['acme'], failures: [], groups: [
+  { id: 'acme', name: 'Acme Gateway', models: [{ id: 'acme-off', name: 'Acme Off' }, { id: 'acme-low', name: 'Acme Low' }] },
+] }
+const MODEL_CATALOG: CotTranslationSnapshot = { maxTextChars: 12, availableProviders: ['bing', 'google', 'llm'],
+  preferences: { provider: 'llm', targetLanguage: 'auto' } }
+const MODEL_CHOICES = [
+  { provider: 'acme', providerName: 'Acme Gateway', model: 'acme-off', modelName: 'Acme Off' },
+  { provider: 'acme', providerName: 'Acme Gateway', model: 'acme-low', modelName: 'Acme Low' },
+]
+
+/** The settings face's model-route store, mounted over one catalog. */
+async function mountRoutes(b: Awaited<ReturnType<typeof fixture>>) {
+  const dispose = await mountTranslation(b.ctx, contribution)
+  const settings = b.ctx.slots.entries('plugins.bundle.config')[0]!.inject!()
+  const hooks = settings.hooks as { modelRoutes: { getSnapshot: () => readonly unknown[] } }
+  return { dispose, hooks }
+}
+
+it('reads the model catalog once while the Host offers the model route, and clears it when the route withdraws', async () => {
+  const b = await fixture(false, { provider: 'llm', targetLanguage: 'auto' })
+  b.setCatalog(MODEL_CATALOG)
+  b.modelCatalog.mockResolvedValue({ ok: true, value: MODEL_GROUPS })
+  try {
+    const { dispose, hooks } = await mountRoutes(b)
+    await vi.waitFor(() => { expect(hooks.modelRoutes.getSnapshot()).toEqual(MODEL_CHOICES) })
+    expect(b.modelCatalog).toHaveBeenCalledOnce()
+    b.setCatalog({ ...MODEL_CATALOG, availableProviders: ['bing', 'google'] })
+    b.emitEvent('llm/adapters-updated')
+    await vi.waitFor(() => { expect(hooks.modelRoutes.getSnapshot()).toEqual([]) })
+    expect(b.modelCatalog).toHaveBeenCalledOnce()
+    await dispose()
+  } finally { await b.ctx.fiber.dispose() }
+})
+
+it('reports an unreadable model catalog without inventing a route choice', async () => {
+  const b = await fixture(false, { provider: 'llm', targetLanguage: 'auto' })
+  b.setCatalog(MODEL_CATALOG)
+  b.modelCatalog.mockResolvedValue({ ok: false, error: new RemoteError('cotTranslation/failed', 'catalog unavailable', {}) })
+  const warn = vi.spyOn(b.ctx.logger, 'warn')
+  try {
+    const { dispose, hooks } = await mountRoutes(b)
+    await vi.waitFor(() => { expect(warn).toHaveBeenCalledWith('cot-translation: could not read the model routes for translation') })
+    expect(hooks.modelRoutes.getSnapshot()).toEqual([])
+    await dispose()
+  } finally { await b.ctx.fiber.dispose() }
+})
+
+it('joins a model catalog read accepted before disposal and stays silent afterwards', async () => {
+  const b = await fixture(false, { provider: 'llm', targetLanguage: 'auto' })
+  b.setCatalog(MODEL_CATALOG)
+  const entered = Promise.withResolvers<undefined>(), release = Promise.withResolvers<undefined>()
+  b.modelCatalog.mockImplementationOnce(async () => {
+    entered.resolve(undefined); await release.promise; return { ok: true, value: MODEL_GROUPS }
+  })
+  const warn = vi.spyOn(b.ctx.logger, 'warn')
+  try {
+    const { dispose, hooks } = await mountRoutes(b)
+    await entered.promise
+    const closing = dispose()
+    release.resolve(undefined)
+    await closing
+    expect(hooks.modelRoutes.getSnapshot()).toEqual([])
+    expect(warn).not.toHaveBeenCalledWith('cot-translation: could not read the model routes for translation')
+  } finally { await b.ctx.fiber.dispose() }
+})
+
+it('logs a rejected model catalog read and keeps the panel usable', async () => {
+  const b = await fixture(false, { provider: 'llm', targetLanguage: 'auto' })
+  b.setCatalog(MODEL_CATALOG)
+  b.modelCatalog.mockRejectedValueOnce(new Error('remote unavailable'))
+  const warn = vi.spyOn(b.ctx.logger, 'warn')
+  try {
+    const { dispose, hooks } = await mountRoutes(b)
+    await vi.waitFor(() => { expect(warn).toHaveBeenCalledWith('cot-translation: model route read failed: %s', 'Error: remote unavailable') })
+    expect(hooks.modelRoutes.getSnapshot()).toEqual([])
+    await dispose()
+  } finally { await b.ctx.fiber.dispose() }
+})
+
+it('stays silent about a model catalog failure that lands after disposal', async () => {
+  const b = await fixture(false, { provider: 'llm', targetLanguage: 'auto' })
+  b.setCatalog(MODEL_CATALOG)
+  const entered = Promise.withResolvers<undefined>(), release = Promise.withResolvers<undefined>()
+  b.modelCatalog.mockImplementationOnce(async () => { entered.resolve(undefined); await release.promise; throw new Error('remote closed') })
+  const warn = vi.spyOn(b.ctx.logger, 'warn')
+  try {
+    const { dispose } = await mountRoutes(b)
+    await entered.promise
+    const closing = dispose()
+    release.resolve(undefined)
+    await closing
+    expect(warn).not.toHaveBeenCalledWith('cot-translation: model route read failed: %s', 'Error: remote closed')
   } finally { await b.ctx.fiber.dispose() }
 })

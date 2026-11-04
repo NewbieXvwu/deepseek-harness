@@ -11,9 +11,25 @@ export interface CotTranslationPreferences {
 }
 
 /** The translator namespace section this panel edits. */
-export interface DeeplxEndpointPreference {
+export interface TranslatorPreference {
   /** DeepLX endpoint that receives reasoning when the reader selects DeepLX. */
   deeplxEndpoint: string
+  /** Provider id of the configured model route; empty while the reader has not chosen one. */
+  llmProvider: string
+  /** Model id of the configured model route, matched against that provider's catalog. */
+  llmModel: string
+}
+
+/** One model route the panel can offer for translation. */
+export interface ModelRouteChoice {
+  /** Provider id the translator sends the fragment to. */
+  provider: string
+  /** Provider name as the model page presents it. */
+  providerName: string
+  /** Model id within that provider. */
+  model: string
+  /** Model name as the model page presents it. */
+  modelName: string
 }
 
 /** Authoritative Host metadata read before any reasoning is submitted. */
@@ -22,7 +38,7 @@ export interface CotTranslationSnapshot {
   maxTextChars: number
   /** Current accepted provider and target-language preferences. */
   preferences: CotTranslationPreferences
-  /** Anonymous endpoints and native paid routes currently eligible for translation. */
+  /** Anonymous endpoints, eligible built-in paid routes, and the configured model route when it serves. */
   availableProviders: readonly TranslationProvider[]
 }
 

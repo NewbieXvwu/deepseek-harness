@@ -26,7 +26,7 @@ function fixture(preferences: Partial<CotTranslationPreferences> = {}) {
   return { ctx, controller, resolve, translate, configure, availableProviders, resolveAgent, config }
 }
 
-it.each(['bing', 'google', 'deeplx'] as const)('dispatches the accepted %s route without falling back', async (provider) => {
+it.each(['bing', 'google', 'deeplx', 'llm'] as const)('dispatches the accepted %s route without falling back', async (provider) => {
   const b = fixture({ provider }), signal = new AbortController().signal
   expect(await b.controller.translate({ text: 'original', targetLanguage: 'zh', provider }, signal)).toBe('translated')
   expect(b.resolve).toHaveBeenCalledWith({ text: 'original', targetLanguage: 'zh', provider })
@@ -142,6 +142,8 @@ it.each([
   { accepted: 'bing' as const, requested: 'deepseek-official' as const },
   { accepted: 'deepseek-account' as const, requested: 'deepseek-official' as const },
   { accepted: 'deepseek-official' as const, requested: 'bing' as const },
+  { accepted: 'bing' as const, requested: 'llm' as const },
+  { accepted: 'llm' as const, requested: 'deepseek-official' as const },
 ])('rejects $requested when the accepted provider is $accepted before lookup or dispatch', async ({ accepted, requested }) => {
   const b = fixture({ provider: accepted })
   await expect(b.controller.translate({ text: 'private original', targetLanguage: 'ja', provider: requested }, new AbortController().signal))
@@ -189,7 +191,7 @@ it('reports accepted Host preferences and uses them when a request omits its pro
   await expect(b.controller.limits(AbortSignal.abort(new Error('cancelled query')))).rejects.toThrow('cancelled query')
 })
 
-it.each(['deepseek-account', 'deepseek-official'] as const)('keeps accepted %s cache lookup available when new requests are ineligible', async (provider) => {
+it.each(['deepseek-account', 'deepseek-official', 'llm'] as const)('keeps accepted %s cache lookup available when new requests are ineligible', async (provider) => {
   const b = fixture({ provider }), signal = new AbortController().signal
   expect(await b.controller.limits(signal)).toEqual({ maxTextChars: 32,
     preferences: { provider, targetLanguage: 'auto' }, availableProviders: ['bing', 'google'] })
@@ -207,4 +209,11 @@ it('preserves cancellation after a held native route catalog settles', async () 
   caller.abort(reason)
   pending.resolve(['bing', 'google'])
   await expect(task).rejects.toBe(reason)
+})
+
+it('surfaces the model route in limits only while the translator reports it eligible', async () => {
+  const b = fixture({ provider: 'llm' }), signal = new AbortController().signal
+  expect((await b.controller.limits(signal)).availableProviders).toEqual(['bing', 'google'])
+  b.availableProviders.mockResolvedValueOnce(['bing', 'google', 'llm'])
+  expect((await b.controller.limits(signal)).availableProviders).toEqual(['bing', 'google', 'llm'])
 })

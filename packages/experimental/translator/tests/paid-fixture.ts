@@ -7,10 +7,12 @@ import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SqliteSessionQuery from '@deepseek-ai/dsh-session-query-sqlite'
 import * as Official from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import * as Account from '@deepseek-ai/dsh-llm-deepseek-account'
+import * as PiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import type { DeepSeekAccount } from '@deepseek-ai/dsh-deepseek-account'
 import DeepSeekLlmApiExtensionRegistry from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import * as SessionLogDeepSeek from '@deepseek-ai/dsh-session-log-deepseek'
 import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
+import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { once } from 'node:events'
 import { createServer, type ServerResponse } from 'node:http'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
@@ -40,14 +42,44 @@ export function replyEvents(text = '翻译结果', stop = 'end_turn'): Record<st
   ]
 }
 
+/** Text preceded by thinking output, which a route that cannot disable thinking returns. */
+export function thinkingReplyEvents(thinking: string, text: string): Record<string, unknown>[] {
+  return [
+    { type: 'message_start', message: { id: 'translation-response', model: 'acme-opus', usage: { input_tokens: 3, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking } },
+    { type: 'content_block_stop', index: 0 },
+    ...replyEvents(text).slice(1),
+  ]
+}
+
+/** A tool call instead of the requested translation text. */
+export function toolCallReplyEvents(): Record<string, unknown>[] {
+  return [
+    { type: 'message_start', message: { id: 'translation-response', model: 'acme-opus', usage: { input_tokens: 3, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'call-1', name: 'echo', input: {} } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"text":' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 3 } },
+    { type: 'message_stop' },
+  ]
+}
+
 /** Serialize actual Messages events into the external endpoint's SSE protocol. */
 export function sse(events: Record<string, unknown>[]): string {
   return events.map(event => `event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`).join('')
 }
 
+/** Translator profile values; the volatile route fields arrive as plain strings from a configuration document. */
+export type RawTranslatorConfig = Partial<Omit<Config, 'deeplxEndpoint' | 'llmProvider' | 'llmModel'>> & {
+  deeplxEndpoint?: string
+  llmProvider?: string
+  llmModel?: string
+}
+
 /** Parsed native model choices accepted by the fixture composition. */
 export interface FixtureOptions {
-  translator?: Partial<Config>
+  translator?: RawTranslatorConfig
   officialModels?: { id: string; name: string }[]
   /** Entries of the account `GET /models` listing. */
   accountModels?: { id: string; name: string }[]
@@ -60,13 +92,44 @@ export interface FixtureOptions {
   signedIn?: boolean
   withSessionLog?: boolean
   responseStatus?: number
+  /** `llm-pi-ai` routes the composition declares; absent mounts no generic model route. */
+  llmRoutes?: (baseURL: string) => Record<string, unknown>
+  /** Whether the composition serves the settings namespace a generic route's credential is read from. */
+  withSettings?: boolean
+  /** Whether the credential a generic route names is configured. */
+  llmCredentialConfigured?: boolean
   reply?: (response: ServerResponse, request: NativeRequest) => void | Promise<void>
+}
+
+/** Credential reference a generic model route resolves. */
+export const LLM_FIXTURE_KEY = 'PAID_TRANSLATION_FIXTURE_LLM_KEY'
+
+/** Provider id of the fixture's hand-declared generic route. */
+export const LLM_FIXTURE_PROVIDER = 'acme-gateway'
+
+/** Model ids the fixture's generic route declares, by thinking capability. */
+export const LLM_FIXTURE_MODELS = { off: 'acme-off', lowOnly: 'acme-low', highOnly: 'acme-high', plain: 'acme-plain' } as const
+
+/** The `llm-pi-ai` profiles declaring {@link LLM_FIXTURE_MODELS} over the loopback endpoint. */
+export function llmRouteProfiles(baseURL: string): Record<string, unknown> {
+  return {
+    [LLM_FIXTURE_PROVIDER]: {
+      apiKeyEnv: LLM_FIXTURE_KEY, baseURL, api: 'anthropic-messages',
+      models: [
+        { id: LLM_FIXTURE_MODELS.off, reasoningEfforts: { off: null, low: 'low' } },
+        { id: LLM_FIXTURE_MODELS.lowOnly, reasoningEfforts: { low: 'low', high: 'high' } },
+        { id: LLM_FIXTURE_MODELS.highOnly, reasoningEfforts: { high: 'high' } },
+        { id: LLM_FIXTURE_MODELS.plain },
+      ],
+    },
+  }
 }
 
 /** Composition choices changed only after the old Host has fully closed. */
 export interface RestartOptions {
   withNativeOwners?: boolean
-  translator?: Partial<Config>
+  translator?: RawTranslatorConfig
+  llmRoutes?: (baseURL: string) => Record<string, unknown>
 }
 
 /** Boot actual native provider rows; cleanup is registered as soon as resources exist. */
@@ -123,6 +186,8 @@ export async function paidFixture(cleanups: Array<() => Promise<void>>, options:
   if (address === null || typeof address === 'string') throw new Error('Expected allocated loopback listener')
   const baseURL = `http://127.0.0.1:${address.port}/anthropic`
   let configured = options.credentialConfigured ?? true, signedIn = options.signedIn ?? true
+  let llmConfigured = options.llmCredentialConfigured ?? true
+  let llmRoutes = options.llmRoutes, llmDocument = llmRoutes?.(baseURL)
   const configPath = join(root, 'cordis.yml'), storedRoot = join(root, 'sessions')
   let translator = options.translator ?? {}, withNativeOwners = true
   const rows = () => [
@@ -133,6 +198,7 @@ export async function paidFixture(cleanups: Array<() => Promise<void>>, options:
       baseURL, apiKeyEnv: 'PAID_TRANSLATION_FIXTURE_KEY', models: options.officialModels ?? [{ id: 'deepseek-flash', name: 'Flash version-independent name' }],
     } },
     { id: 'account-custom-id', name: '@deepseek-ai/dsh-llm-deepseek-account', disabled: !withNativeOwners, config: { baseURL } },
+    ...llmRoutes === undefined ? [] : [{ id: 'llm-pi-ai', name: '@deepseek-ai/dsh-llm-pi-ai', config: { providers: llmRoutes(baseURL) } }],
     { id: 'translator', name: '@deepseek-ai/dsh-experimental-translator', config: translator },
     ...options.withSessionQuery === true ? [
       { id: 'query', name: '@deepseek-ai/dsh-session-query-sqlite', config: { path: join(root, 'query.sqlite'), openAt: 'never' } },
@@ -148,6 +214,7 @@ export async function paidFixture(cleanups: Array<() => Promise<void>>, options:
     ['@deepseek-ai/dsh-session-persistence-jsonl', JsonlPersistence], ['@deepseek-ai/dsh-session-query-sqlite', SqliteSessionQuery],
     [options.officialName ?? '@deepseek-ai/dsh-llm-deepseek-api-key', Official],
     ['@deepseek-ai/dsh-llm-deepseek-account', Account], ['@deepseek-ai/dsh-experimental-translator', Translator],
+    ['@deepseek-ai/dsh-llm-pi-ai', PiAi],
     ['@deepseek-ai/dsh-deepseek-llm-api-extensions', DeepSeekLlmApiExtensionRegistry],
     ['@deepseek-ai/dsh-session-log-deepseek', SessionLogDeepSeek],
   ])
@@ -165,10 +232,19 @@ export async function paidFixture(cleanups: Array<() => Promise<void>>, options:
     }
     host.loader.internal = sourceModules
     host.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process',
-      values: options.ambientConfigured === false ? {} : { PAID_TRANSLATION_FIXTURE_KEY: 'fixture-native-key' } }]))
+      values: options.ambientConfigured === false ? {}
+        : { PAID_TRANSLATION_FIXTURE_KEY: 'fixture-native-key', [LLM_FIXTURE_KEY]: 'fixture-model-key' } }]))
+    const modelKey = (ref?: CredentialRef): boolean => String(ref ?? '') === LLM_FIXTURE_KEY
     if (options.withCredentials !== false) host.provide('credentials', {
-      describe: async () => ({ configured, writable: true }),
-      resolve: async () => configured ? { value: 'fixture-native-key', source: 'fixture' } : undefined,
+      describe: async (ref?: CredentialRef) => ({ configured: modelKey(ref) ? llmConfigured : configured, writable: true }),
+      resolve: async (ref?: CredentialRef) => (modelKey(ref) ? llmConfigured : configured)
+        ? { value: modelKey(ref) ? 'fixture-model-key' : 'fixture-native-key', source: 'fixture' } : undefined,
+      readRecord: async () => undefined, listRecords: async () => [],
+    } as never)
+    if (options.withSettings !== false) host.provide('settings', {
+      describe: () => llmDocument === undefined ? []
+        : [{ ns: 'llm-pi-ai', value: { providers: llmDocument }, revision: 0, applies: 'live' }],
+      configure: () => () => {},
     } as never)
     host.provide('deepseekAccount', {
       resolveToken: async (_baseURL: string): Promise<string | undefined> => signedIn ? 'fixture-account-token' : undefined,
@@ -186,10 +262,11 @@ export async function paidFixture(cleanups: Array<() => Promise<void>>, options:
     await ctx.sessionPersistence.create(session.header)
     await ctx.sessions.flush(session)
   }
-  const translate = (provider: 'deepseek-account' | 'deepseek-official', text = 'Original paragraph', signal?: AbortSignal) =>
+  const translate = (provider: 'deepseek-account' | 'deepseek-official' | 'llm', text = 'Original paragraph', signal?: AbortSignal) =>
     ctx.translator.translate(ctx.translator.resolve({ text, targetLanguage: 'zh', provider,
       ...session === undefined ? {} : { sessionId: session.id } }), signal)
   return { get ctx() { return ctx }, get session() { return session }, root, requests, errors, translate, readEvents,
+    get baseURL() { return baseURL },
     async activate(id: SessionId = auditId) {
       const writer = await ctx.sessionPersistence.open(id, 'write')
       const stored = await writer.read()
@@ -217,8 +294,13 @@ export async function paidFixture(cleanups: Array<() => Promise<void>>, options:
       session = undefined
       withNativeOwners = changes.withNativeOwners ?? withNativeOwners
       translator = changes.translator ?? translator
+      llmRoutes = changes.llmRoutes ?? llmRoutes
+      llmDocument = llmRoutes?.(baseURL)
       await writeFile(configPath, JSON.stringify(rows()))
       ctx = await start()
     },
-    setConfigured(value: boolean) { configured = value }, setSignedIn(value: boolean) { signedIn = value } }
+    setConfigured(value: boolean) { configured = value }, setSignedIn(value: boolean) { signedIn = value },
+    setLlmCredentialConfigured(value: boolean) { llmConfigured = value },
+    /** Replace what the Host serves for the generic route's settings namespace. */
+    setLlmDocument(value: Record<string, unknown> | undefined) { llmDocument = value } }
 }

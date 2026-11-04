@@ -2,11 +2,11 @@
 
 [English](translation.md) | 中文
 
-实验性 [translator](../../packages/experimental/translator/README.zh.md) 通过免登录浏览器端点或显式选择的付费原生 Flash 路由翻译文本。消费者负责展示、调度及 Session 激活；绑定 Session 的请求通过已激活 Session 的写入器保留可复用结果。
+实验性 [translator](../../packages/experimental/translator/README.zh.md) 通过免登录浏览器端点、显式选择的付费原生 Flash 路由或一条已配置的模型路由翻译文本。消费者负责展示、调度及 Session 激活；绑定 Session 的请求通过已激活 Session 的写入器保留可复用结果。
 
 ## 请求与结果
 
-`TranslationProvider` 选择 `bing`、`google`、`deeplx`、`deepseek-account` 或 `deepseek-official`。`TranslationRequest` 提供 `text`、`targetLanguage` 及可选的 `sourceLanguage`、`provider` 与带品牌类型的 `sessionId`。`resolve()` 将显式路由写入 `TranslationSpec`：配置的默认 Provider 为 Bing，省略源语言时自动检测。常见中文 locale 标签映射为所选 Provider 的语言代码。`translate()` 返回所选 Provider 翻译后的纯文本。
+`TranslationProvider` 选择 `bing`、`google`、`deeplx`、`deepseek-account`、`deepseek-official` 或 `llm`。`TranslationRequest` 提供 `text`、`targetLanguage` 及可选的 `sourceLanguage`、`provider` 与带品牌类型的 `sessionId`。`resolve()` 将显式路由写入 `TranslationSpec`：配置的默认 Provider 为 Bing，省略源语言时自动检测。常见中文 locale 标签映射为所选 Provider 的语言代码。`translate()` 返回所选 Provider 翻译后的纯文本。
 
 服务公开配置的 `maxTextChars`，单位为 UTF-16 code unit。消费者先拆分超长输入，再请求翻译。每次调用限制响应字节数，并将响应体读取计入超时。调用者取消和服务卸载都会中止已接收的请求；卸载等待这些请求完成。
 
@@ -14,7 +14,7 @@
 
 `TranslationError` 的 `TranslationErrorCode` 区分文本超限、HTTP 失败、无效响应、响应超限、服务自身超时、不可用的配置端点与请求失败。`TRANSLATION_SESSION_REQUIRED` 拒绝缺失的持久化后端或 Session，`TRANSLATION_SESSION_INACTIVE` 在调用 Provider 前拒绝未激活且缓存未命中的 Session，`TRANSLATION_STORAGE_ERROR` 拒绝无效保存记录或持久化失败。Provider 错误信息省略提交的文本与响应体。失败时不选择其他 Provider。响应作为外部 JSON 校验，重定向被拒绝。
 
-`TRANSLATION_UNAVAILABLE` 拒绝缺失的活跃内置所有者或已注册路由、未配置的凭据、目录中不存在精确的 `deepseek-flash`、派发前所有者、模型配置（官方路由的 `models` 或账号路由的 `modelOverrides`）或官方凭据引用变化、提供方卸载，以及准备后的调用推理强度不是 `off` 的情况。原生 `finish` 的原因为 `error` 时映射为 `TRANSLATION_REQUEST_FAILED`；缺失 finish 或其他非 `stop` 原因映射为 `TRANSLATION_INVALID_RESPONSE`。
+`TRANSLATION_UNAVAILABLE` 拒绝缺失的活跃内置所有者或已注册路由、未配置的凭据、目录中不存在精确的 `deepseek-flash`、派发前所有者、模型配置（官方路由的 `models` 或账号路由的 `modelOverrides`）或官方凭据引用变化、提供方卸载，以及准备后的调用推理强度不是 `off` 的情况。对模型路由，它还拒绝未设置或属于保留名称的路由、未注册或非活动的提供方条目、无法读取的配置段、未配置的凭据、目录不再包含的模型 id，以及在多次准入检查之间发现的路由变化。原生 `finish` 的原因为 `error` 时映射为 `TRANSLATION_REQUEST_FAILED`；缺失 finish 或其他非 `stop` 原因映射为 `TRANSLATION_INVALID_RESPONSE`。
 
 Google 在 form POST 请求体中接收原文，Bing 和 DeepLX 在 JSON POST 请求体中接收原文，DeepLX 从响应的 `data` 字段读取译文。三者都是远端服务。免登录端点不保证开发者 API 的可用性或免费额度，DeepLX 只把文本发往设置面板保存的地址或本部署配置的端点。区域连通性须在用户网络上验证。
 
@@ -22,11 +22,11 @@ Google 在 form POST 请求体中接收原文，Bing 和 DeepLX 在 JSON POST �
 
 绑定 Session 的调用对所有 Provider 使用 `plugin:translator/request` 与 `plugin:translator/result`。请求保留精确原文、语言标签、所选 Provider 和翻译规则标识，成功结果引用请求序号。可选请求 metadata 保存 Provider 专有细节，不改变记录类型。translator 在外部派发前完成请求检查点，在返回前完成结果检查点。只读缓存查找先于 Provider 调用，且不要求 Session 已激活；失败或未完成尝试不提供可复用译文。新记录使用已激活 Session 的现有写入器。translator 不打开写句柄，也不激活 Session。翻译记录保留原始事件与模型输入。不指定 Session 的匿名调用保持无状态；付费路由要求 Session。未来格式迁移对实验性记录的保留为尽力而为。
 
-付费缓存未命中时要求内置账号或官方 API 所有者处于活动状态、凭据已配置，且目录包含 ID 恰好为 `deepseek-flash` 的模型；名称和版本标签不参与匹配，pi-ai 路由被排除。每次未命中准备一次关闭思考的独立纯文本查询。精确配置、系统指令和唯一原文片段保存在同一请求记录的可选 `metadata.modelRequest` 中。读取保存结果先于此项准入，因此凭据缺失不会使既有译文失效。原生请求扩展不接收主 Session 身份，不能上传其完整日志。
+内置路由的缓存未命中要求账号或官方 API 所有者处于活动状态、凭据已配置，且目录包含 ID 恰好为 `deepseek-flash` 的模型；名称和版本标签不参与匹配。模型路由的缓存未命中要求 `llmProvider` 和 `llmModel` 指向一个已注册、Loader 条目活动、所声明凭据已配置且目录包含精确模型 id 的提供方；为其他提供方保留的名称会被拒绝。两个名称都未保存时，发现流程只要求存在某个不属于这些身份的已注册提供方，因此面板能在任何路由保存前列出该选项。每次未命中准备一次独立纯文本查询：`deepseek-flash` 关闭思考，已配置的路由则依次尝试 `off`、最低的可选强度，或沿用模型默认。精确配置、系统指令和唯一原文片段保存在同一请求记录的可选 `metadata.modelRequest` 中。读取保存结果先于此项准入，因此凭据缺失不会使既有译文失效。已配置路由的翻译规则携带其提供方与模型，因此已保存的译文不会展示给另一个模型。原生请求扩展不接收主 Session 身份，不能上传其完整日志。
 
 ## 思考内容展示
 
-[可选 Bundle](../../packages/experimental/cot-translation-bundle/README.zh.md) 将 translator 与 [GUI 消费者](../../packages/experimental/client-ui-cot-translation/README.zh.md) 组合。其 `cotTranslation` Remote 为经过身份验证的浏览器调用提供服务。Session 未激活且没有已保存结果时，Host 等待 Session controller 的正常激活，再重试一次。激活保留正常的 preset 钩子、恢复标记和中断轮次修复；取消会结束调用者的等待并阻止随后调用翻译，不取消共享激活。Bundle 设置选择翻译服务及目标语言；选中 DeepLX 后出现其地址栏，写入 translator 的 `deeplxEndpoint`；`auto` 跟随当前界面语言。
+[可选 Bundle](../../packages/experimental/cot-translation-bundle/README.zh.md) 将 translator 与 [GUI 消费者](../../packages/experimental/client-ui-cot-translation/README.zh.md) 组合。其 `cotTranslation` Remote 为经过身份验证的浏览器调用提供服务。Session 未激活且没有已保存结果时，Host 等待 Session controller 的正常激活，再重试一次。激活保留正常的 preset 钩子、恢复标记和中断轮次修复；取消会结束调用者的等待并阻止随后调用翻译，不取消共享激活。Bundle 设置选择翻译服务及目标语言；选中 DeepLX 后出现其地址栏，选中 LLM API 后出现基于 Host 模型目录的模型选择栏，两者都写入 translator 的条目（`deeplxEndpoint`、`llmProvider`、`llmModel`）；`auto` 跟随当前界面语言。
 
 `CotTranslationPreferences` 包含已接受的翻译服务和目标语言。`CotTranslationSnapshot` 将这些偏好与 translator 当前的 `maxTextChars` 及可用服务 ID 一起返回。浏览器在注册翻译控件前读取此 Host 快照，本地设置存储不可用时也如此。接受的设置更新及重新连接会刷新这两项值；请求长度限制变化时，展开内容的请求被取消并重新分片。
 
@@ -75,9 +75,12 @@ One Host service with explicit routing, cancellation and quiescent unload.
 
 ```ts cordis-catalog
 /**
- * Inspect eligible native routes without inference; saved results remain readable for unavailable routes.
+ * Inspect eligible model routes without inference; saved results remain readable for unavailable routes.
+ * With both `llmProvider` and `llmModel` unset, the model route is listed whenever some registered provider is not
+ * one with its own translation identity, because this is where a reader picks the route before storing its names.
  * @param signal - optional caller cancellation, combined with service disposal.
- * @returns anonymous choices followed by eligible explicitly selected paid routes.
+ * @returns anonymous choices, then eligible built-in paid routes, then the model route — offered for a first pick, or
+ *   listed when the stored names describe a route the Host actually serves.
  */
 async availableProviders(signal?: AbortSignal): Promise<readonly TranslationProvider[]>
 

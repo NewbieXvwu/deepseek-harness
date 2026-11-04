@@ -1470,10 +1470,10 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-translator`
 
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/translator/src/index.ts:25`](../packages/experimental/translator/src/index.ts)
+- `source`: [`packages/experimental/translator/src/index.ts:26`](../packages/experimental/translator/src/index.ts)
 
 ```ts config-catalog
-/** Routing and bounds for anonymous requests and independent native model translation. */
+/** Routing and bounds for anonymous requests, built-in DeepSeek routes, and one configured model route. */
 export interface Config {
   /** Provider selected when a consumer omits it. */
   provider: TranslationProvider
@@ -1493,16 +1493,27 @@ export interface Config {
   deepseekTimeoutMs: number
   /** Requested output-token cap for independent native Flash translation. */
   deepseekMaxOutputTokens: number
+  /** Provider id of the configured model route, editable from the reasoning-translation panel and checked when a request uses it. */
+  llmProvider: Volatile<string>
+  /** Model id of the configured model route, matched exactly against that provider's catalog. */
+  llmModel: Volatile<string>
+  /** Deadline for model-route admission and complete translation output, in milliseconds. */
+  llmTimeoutMs: number
+  /** Requested output-token cap for the configured model route. */
+  llmMaxOutputTokens: number
 }
 
-/** Explicit anonymous endpoint or native paid model route. */
-export type TranslationProvider = AnonymousTranslationProvider | PaidTranslationProvider
+/** Explicit anonymous endpoint or model route. */
+export type TranslationProvider = AnonymousTranslationProvider | ModelTranslationProvider
 
 /** Anonymous endpoint protocol selected for one translation. */
 export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx'
 
-/** Explicit native DeepSeek credential route selected for paid translation. */
-export type PaidTranslationProvider = 'deepseek-account' | 'deepseek-official'
+/** Model routes that translate a fragment: the built-in DeepSeek routes and one configured provider and model. */
+export type ModelTranslationProvider = NativeTranslationProvider | 'llm'
+
+/** Built-in DeepSeek credential routes, admitted by their exact `deepseek-flash` catalog membership. */
+export type NativeTranslationProvider = 'deepseek-account' | 'deepseek-official'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-translator -->
 

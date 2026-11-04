@@ -1,0 +1,3 @@
+- button "思考" [expanded]
+- button "查看原文"
+- paragraph: 已配置模型给出的译文：用户要求只回复一个词。

@@ -1,0 +1,55 @@
+- button "返回 实验性插件": 实验性插件
+- button "卸载 思考过程机器翻译" [disabled]: 卸载
+- status
+- switch "启用 思考过程机器翻译" [checked]
+- heading "思考过程机器翻译" [level=3]
+- text: v{{version}} 实验性
+- paragraph:
+  - code: "@deepseek-ai/dsh-experimental-cot-translation-bundle"
+- paragraph: 智能体输出时，把展开的“思考”行翻译成你选择的语言，点击“查看原文”可切换回原文。
+- region "详细介绍":
+  - paragraph:
+    - img "展开的思考行从英文翻译成中文，并显示“查看原文”按钮"
+- paragraph: 展开的思考内容会发送给所选翻译服务，可能包含私有代码或对话细节。
+- paragraph: 每个未缓存片段都会向所选模型发送一次独立请求；无法关闭思考的模型可能同时返回思考内容，思考内容不会显示，但仍会计费
+- text: 翻译服务 已覆盖
+- button "恢复默认"
+- combobox "翻译服务":
+  - option "Bing"
+  - option "Google"
+  - option "DeepLX"
+  - option "LLM API" [selected]
+- text: 翻译模型 已覆盖
+- button "恢复默认"
+- combobox "翻译模型":
+  - option "E2E Gateway · web-e2e-translator" [selected]
+  - option "DeepSeek · DeepSeek-V4-Flash"
+  - option "DeepSeek · DeepSeek-V4-Flash-Vision-Exp"
+- status: 可选模型来自本 Host 的模型页面；所选模型会收到展开的思考内容
+- text: 目标语言 已覆盖
+- button "恢复默认"
+- textbox "目标语言":
+  - /placeholder: ""
+  - text: auto
+- paragraph: auto 使用界面语言；也可填写语言代码，例如 zh、en、ja
+- button "保存" [disabled]
+- heading "包含的组件" [level=4]
+- text: 共 2 个 · 2 运行中
+- list:
+  - listitem:
+    - text: 翻译服务 提供机器翻译，并复用会话中已保存的翻译结果。
+    - code: translator
+    - code: "@deepseek-ai/dsh-experimental-translator"
+    - text: 运行中
+    - switch "启用组件 翻译服务" [checked]
+  - listitem:
+    - text: 思考过程机器翻译 将展开的思考内容机器翻译为其他语言。
+    - code: cot-translation
+    - code: "@deepseek-ai/dsh-experimental-client-ui-cot-translation"
+    - text: 运行中
+    - switch "启用组件 思考过程机器翻译" [checked]
+- heading "来源信息" [level=4]
+- term: 代码来源
+- definition: 内置
+- term: 当前版本
+- definition: {{version}}

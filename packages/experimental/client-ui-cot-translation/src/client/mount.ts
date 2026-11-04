@@ -1,6 +1,7 @@
 /** Optional Remote contribution and reasoning-slot registration lifecycle. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { TranslationProvider } from '@deepseek-ai/dsh-experimental-translator/types'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -10,23 +11,27 @@ import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {} from '@deepseek-ai/dsh-experimental-client-ui-cot-translation/remote'
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { CotTranslationPreferences, CotTranslationSnapshot, DeeplxEndpointPreference } from '../preferences.ts'
+import type { CotTranslationPreferences, CotTranslationSnapshot, ModelRouteChoice, TranslatorPreference } from '../preferences.ts'
 import { TranslationBody, type TranslationBodyInjected } from './TranslationBody.tsx'
 import { TranslationSettings } from './TranslationSettings.tsx'
 import { TranslationPreferencesForm } from './preferences-form.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh } from './locales.ts'
 
-/** Services required to mount the optional Remote and UI contributions. */
-export const inject = ['remote', 'slots', 'locale', 'configForms']
+/**
+ * Services required to mount the optional Remote and UI contributions. `remote.session` is declared separately
+ * because the connection hands a fiber no remote namespace it did not ask for, and the model route read needs it.
+ */
+export const inject = ['remote', 'remote.session', 'slots', 'locale', 'configForms']
 
 async function registerUi(ctx: Context, lifetime: AbortController): Promise<void> {
   let readTask: Promise<RemoteResult<CotTranslationSnapshot>> | undefined
   let updating: Promise<void> | undefined
+  let routesTask: Promise<void> | undefined
   let revision = 0, lastReadRevision = -1, acceptedRevision = -1
   const isDisposed = (): boolean => lifetime.signal.aborted || ctx.fiber.uid === null
   ctx.effect(() => async () => {
     lifetime.abort()
-    await Promise.allSettled([readTask, updating])
+    await Promise.allSettled([readTask, updating, routesTask])
   }, 'cot-translation: metadata queries')
   const invalidate = (): void => { revision += 1; refresh() }
   ctx.effect(() => [
@@ -58,7 +63,28 @@ async function registerUi(ctx: Context, lifetime: AbortController): Promise<void
   const preferences = createSnapshotStore(initial.value.preferences)
   const translationLimit = createSnapshotStore(initial.value.maxTextChars)
   const availableProviders = createSnapshotStore(initial.value.availableProviders)
+  const modelRoutes = createSnapshotStore<readonly ModelRouteChoice[]>([])
+  /**
+   * Read the routes the model page serves, and only while the Host offers the model route: one read resolves every
+   * catalog entry of every provider, which no other translation choice needs.
+   */
+  const loadRoutes = async (providers: readonly TranslationProvider[]): Promise<void> => {
+    if (!providers.includes('llm')) { modelRoutes.set([]); return }
+    const response = await ctx.remote.session.modelCatalog()
+    if (isDisposed() || !response.ok) {
+      if (!isDisposed()) ctx.logger.warn('cot-translation: could not read the model routes for translation')
+      return
+    }
+    modelRoutes.set(response.value.groups.flatMap(group =>
+      group.models.map(model => ({ provider: group.id, providerName: group.name, model: model.id, modelName: model.name }))))
+  }
+  const queueRoutes = (providers: readonly TranslationProvider[]): void => {
+    routesTask = loadRoutes(providers).catch((error: unknown) => {
+      if (!isDisposed()) ctx.logger.warn('cot-translation: model route read failed: %s', String(error))
+    }).finally(() => { routesTask = undefined })
+  }
   acceptedRevision = lastReadRevision
+  queueRoutes(initial.value.availableProviders)
   function refresh(): void {
     if (updating !== undefined || acceptedRevision < 0 || isDisposed()) return
     updating = (async () => {
@@ -68,6 +94,7 @@ async function registerUi(ctx: Context, lifetime: AbortController): Promise<void
           preferences.set(result.value.preferences)
           translationLimit.set(result.value.maxTextChars)
           availableProviders.set(result.value.availableProviders)
+          queueRoutes(result.value.availableProviders)
           acceptedRevision = lastReadRevision
         }
       } catch (_error) {
@@ -81,7 +108,7 @@ async function registerUi(ctx: Context, lifetime: AbortController): Promise<void
   const scope = ctx.configForms.get<CotTranslationPreferences>('cot-translation')
   ctx.effect(() => scope.subscribe(invalidate))
   ctx.effect(() => ctx.locale.register(NS, { en, zh, ja, es, fr, de, ru, pt }))
-  const form = new TranslationPreferencesForm(scope, ctx.configForms.get<DeeplxEndpointPreference>('translator'))
+  const form = new TranslationPreferencesForm(scope, ctx.configForms.get<TranslatorPreference>('translator'))
   ctx.effect(() => () => { form.dispose() })
   const injected = (sessionId: SessionId): TranslationBodyInjected => ({
     hooks: { preferences, translationLocale: ctx.locale, translationLimit },
@@ -106,7 +133,7 @@ async function registerUi(ctx: Context, lifetime: AbortController): Promise<void
     name: 'plugins.bundle.config', key: '@deepseek-ai/dsh-experimental-cot-translation-bundle', locale: NS,
     inject: () => {
       const face = form.inject()
-      return { ...face, hooks: { ...face.hooks, availableProviders }, refreshProviders: invalidate }
+      return { ...face, hooks: { ...face.hooks, availableProviders, modelRoutes }, refreshProviders: invalidate }
     },
   }, TranslationSettings))
 }

@@ -4130,9 +4130,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'async availableProviders(signal?: AbortSignal): Promise<readonly TranslationProvider[]>',
-        description: 'Inspect eligible native routes without inference; saved results remain readable for unavailable routes.',
+        description: 'Inspect eligible model routes without inference; saved results remain readable for unavailable routes. With both `llmProvider` and `llmModel` unset, the model route is listed whenever some registered provider is not one with its own translation identity, because this is where a reader picks the route before storing its names.',
         parameters: [{ name: 'signal', description: 'optional caller cancellation, combined with service disposal.' }],
-        returns: 'anonymous choices followed by eligible explicitly selected paid routes.',
+        returns: 'anonymous choices, then eligible built-in paid routes, then the model route — offered for a first pick, or listed when the stored names describe a route the Host actually serves.',
       },
       {
         signature: 'resolve(request: TranslationRequest): TranslationSpec',
@@ -7335,6 +7335,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
   },
   {
+    name: 'ModelTranslationProvider',
+    declaration: 'export type ModelTranslationProvider = NativeTranslationProvider | \'llm\';',
+  },
+  {
+    name: 'ModelTranslationSpec',
+    declaration: 'export interface ModelTranslationSpec extends TranslationSpecFields {\n    readonly provider: \'llm\';\n    readonly sessionId: SessionId;\n}',
+  },
+  {
     name: 'ModEvents',
     declaration: 'export interface ModEvents {\n    \'session.start\': {\n        input: SessionStartInput;\n        result: SessionStartResult;\n    };\n    \'session.end\': {\n        input: SessionEndInput;\n        result: SessionEndResult;\n    };\n    \'prompt.submit\': {\n        input: PromptSubmitInput;\n        result: PromptSubmitResult;\n    };\n    \'turn.start\': {\n        input: TurnStartInput;\n        result: TurnStartResult;\n    };\n    \'turn.complete\': {\n        input: TurnCompleteInput;\n        result: TurnCompleteResult;\n    };\n    \'tool.call\': {\n        input: ToolCallInput;\n        result: ToolCallResult;\n    };\n    \'command.run\': {\n        input: CommandRunInput;\n        result: CommandRunResult;\n    };\n    \'ui.render\': {\n        input: UiRenderInput;\n        result: UiRenderResult;\n    };\n}',
   },
@@ -7361,6 +7369,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'NativeFileApplication',
     declaration: 'export interface NativeFileApplication {\n    readonly id: string;\n    readonly name: string;\n    readonly default: boolean;\n    readonly icon: string | null;\n}',
+  },
+  {
+    name: 'NativeTranslationProvider',
+    declaration: 'export type NativeTranslationProvider = \'deepseek-account\' | \'deepseek-official\';',
+  },
+  {
+    name: 'NativeTranslationSpec',
+    declaration: 'export interface NativeTranslationSpec extends TranslationSpecFields {\n    readonly provider: NativeTranslationProvider;\n    readonly sessionId: SessionId;\n}',
   },
   {
     name: 'NpmFileSource',
@@ -7445,14 +7461,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PackageResult',
     declaration: 'export interface PackageResult {\n    exitCode: number;\n    output: string;\n    truncated: boolean;\n    logPath: string;\n    kind?: PluginInstallFailureKind;\n    timedOut?: boolean;\n    incompatible?: IncompatiblePlugin[];\n}',
-  },
-  {
-    name: 'PaidTranslationProvider',
-    declaration: 'export type PaidTranslationProvider = \'deepseek-account\' | \'deepseek-official\';',
-  },
-  {
-    name: 'PaidTranslationSpec',
-    declaration: 'export interface PaidTranslationSpec extends TranslationSpecFields {\n    readonly provider: PaidTranslationProvider;\n    readonly sessionId: SessionId;\n}',
   },
   {
     name: 'PaneOpenArgs',
@@ -9708,7 +9716,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TranslationProvider',
-    declaration: 'export type TranslationProvider = AnonymousTranslationProvider | PaidTranslationProvider;',
+    declaration: 'export type TranslationProvider = AnonymousTranslationProvider | ModelTranslationProvider;',
   },
   {
     name: 'TranslationRequest',
@@ -9716,7 +9724,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TranslationSpec',
-    declaration: 'export type TranslationSpec = AnonymousTranslationSpec | PaidTranslationSpec;',
+    declaration: 'export type TranslationSpec = AnonymousTranslationSpec | NativeTranslationSpec | ModelTranslationSpec;',
   },
   {
     name: 'TurnBoundaryProjection',

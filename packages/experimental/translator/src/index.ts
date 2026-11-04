@@ -8,6 +8,7 @@ import { TranslationStorage } from './storage.ts'
 import { addAbortListener } from 'node:events'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { availablePaidProviders, deepseekRecipe, translateWithDeepSeek } from './deepseek.ts'
+import { availableModelRoute, llmRecipe, translateWithModel } from './llm.ts'
 import type { TranslationIdentity } from './types.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
@@ -21,7 +22,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Routing and bounds for anonymous requests and independent native model translation. */
+/** Routing and bounds for anonymous requests, built-in DeepSeek routes, and one configured model route. */
 export interface Config {
   /** Provider selected when a consumer omits it. */
   provider: TranslationProvider
@@ -41,12 +42,20 @@ export interface Config {
   deepseekTimeoutMs: number
   /** Requested output-token cap for independent native Flash translation. */
   deepseekMaxOutputTokens: number
+  /** Provider id of the configured model route, editable from the reasoning-translation panel and checked when a request uses it. */
+  llmProvider: Volatile<string>
+  /** Model id of the configured model route, matched exactly against that provider's catalog. */
+  llmModel: Volatile<string>
+  /** Deadline for model-route admission and complete translation output, in milliseconds. */
+  llmTimeoutMs: number
+  /** Requested output-token cap for the configured model route. */
+  llmMaxOutputTokens: number
 }
 
 /** One Host service with explicit routing, cancellation and quiescent unload. */
 export default class Translator extends Service {
   static Config = z.object({
-    provider: z.union(['google', 'bing', 'deeplx', 'deepseek-account', 'deepseek-official'] as const).default('bing'),
+    provider: z.union(['google', 'bing', 'deeplx', 'deepseek-account', 'deepseek-official', 'llm'] as const).default('bing'),
     googleEndpoint: z.transform(z.string(), endpoint).default('https://translate.googleapis.com/translate_a/single'),
     bingEndpoint: z.transform(z.string(), endpoint).default('https://edge.microsoft.com/translate/translatetext'),
     deeplxEndpoint: z.string().default('http://127.0.0.1:22330/translate').volatile(),
@@ -55,6 +64,12 @@ export default class Translator extends Service {
     maxResponseBytes: z.natural().min(1).default(1024 * 1024),
     deepseekTimeoutMs: z.natural().min(1).max(2_147_483_647).default(60_000),
     deepseekMaxOutputTokens: z.natural().min(1).default(8192),
+    // A route the panel retargets lives in another package's settings section, so no transform can validate it here;
+    // a request reads the names and rejects a route its provider no longer serves.
+    llmProvider: z.string().default('').volatile(),
+    llmModel: z.string().default('').volatile(),
+    llmTimeoutMs: z.natural().min(1).max(2_147_483_647).default(60_000),
+    llmMaxOutputTokens: z.natural().min(1).default(8192),
   })
 
   private readonly lifetime = new AbortController()
@@ -74,13 +89,20 @@ export default class Translator extends Service {
   get maxTextChars(): number { return this.config.maxTextChars }
 
   /**
-   * Inspect eligible native routes without inference; saved results remain readable for unavailable routes.
+   * Inspect eligible model routes without inference; saved results remain readable for unavailable routes.
+   * With both `llmProvider` and `llmModel` unset, the model route is listed whenever some registered provider is not
+   * one with its own translation identity, because this is where a reader picks the route before storing its names.
    * @param signal - optional caller cancellation, combined with service disposal.
-   * @returns anonymous choices followed by eligible explicitly selected paid routes.
+   * @returns anonymous choices, then eligible built-in paid routes, then the model route — offered for a first pick, or
+   *   listed when the stored names describe a route the Host actually serves.
    */
   async availableProviders(signal?: AbortSignal): Promise<readonly TranslationProvider[]> {
     const combined = this.signal(signal)
-    const task = Promise.resolve().then(() => availablePaidProviders(this.ctx, this.config, combined, (work) => { this.track(work) }))
+    const track = (work: Promise<unknown>): void => { this.track(work) }
+    const task = Promise.resolve().then(async () => {
+      const providers = await availablePaidProviders(this.ctx, this.config, combined, track)
+      return await availableModelRoute(this.ctx, this.config, combined, track) ? [...providers, 'llm' as const] : providers
+    })
     this.track(task)
     return task
   }
@@ -100,8 +122,9 @@ export default class Translator extends Service {
       case 'bing':
       case 'deeplx': return { ...base, provider, ...request.sessionId === undefined ? {} : { sessionId: request.sessionId } }
       case 'deepseek-account':
-      case 'deepseek-official': {
-        if (request.sessionId === undefined) throw new TranslationError('TRANSLATION_SESSION_REQUIRED', 'Paid translation requires a durable Session')
+      case 'deepseek-official':
+      case 'llm': {
+        if (request.sessionId === undefined) throw new TranslationError('TRANSLATION_SESSION_REQUIRED', 'Model translation requires a durable Session')
         return { ...base, provider, sessionId: request.sessionId }
       }
       /* v8 ignore next -- TranslationProvider is a closed union validated by Config or Remote request admission. */
@@ -122,12 +145,14 @@ export default class Translator extends Service {
     const combined = this.signal(signal)
     const identity: TranslationIdentity = { provider: spec.provider, text: spec.text, sourceLanguage: spec.sourceLanguage,
       targetLanguage: spec.targetLanguage, recipe: isAnonymousProvider(spec.provider)
-        ? anonymousRecipe(spec.provider, this.config) : deepseekRecipe(this.config) }
+        ? anonymousRecipe(spec.provider, this.config) : spec.provider === 'llm' ? llmRecipe(this.config) : deepseekRecipe(this.config) }
     const inSession = (id: SessionId) => this.storage.run(id, identity, combined, async (log) => {
       switch (spec.provider) {
         case 'deepseek-account':
         case 'deepseek-official':
           return translateWithDeepSeek(this.ctx, spec, this.config, combined, (work) => { this.track(work) }, log, identity)
+        case 'llm':
+          return translateWithModel(this.ctx, spec, this.config, combined, (work) => { this.track(work) }, log, identity)
         case 'google':
         case 'bing':
         case 'deeplx': {
@@ -148,7 +173,8 @@ export default class Translator extends Service {
         case 'bing':
         case 'deeplx': return spec.sessionId === undefined ? translateText(spec, this.config, combined) : inSession(spec.sessionId)
         case 'deepseek-account':
-        case 'deepseek-official': return inSession(spec.sessionId)
+        case 'deepseek-official':
+        case 'llm': return inSession(spec.sessionId)
         /* v8 ignore next -- TranslationSpec has a closed provider union resolved before same-process dispatch. */
         default: return assertNever(spec)
       }

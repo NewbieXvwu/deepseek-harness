@@ -11,8 +11,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import Translator, { TranslationError, type Config, type TranslationSpec } from '../src/index.ts'
 
 type Reply = (req: IncomingMessage, res: ServerResponse, body: string) => void
-/** Fixture config as the profile stores it: the volatile DeepLX endpoint is written as its value. */
-type RawConfig = Partial<Omit<Config, 'deeplxEndpoint'>> & { readonly deeplxEndpoint?: string }
+/** Fixture config as the profile stores it: the volatile fields are written as their values. */
+type RawConfig = Partial<Omit<Config, 'deeplxEndpoint' | 'llmProvider' | 'llmModel'>>
+  & { readonly deeplxEndpoint?: string; readonly llmProvider?: string; readonly llmModel?: string }
 const cleanups: Array<() => Promise<void>> = []
 
 afterEach(async () => {

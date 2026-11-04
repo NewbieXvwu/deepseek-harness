@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-03-configured-model-reasoning-translation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-03-configured-model-reasoning-translation.md
+/agent-note-reasoning-translation-can-use-one-configured-model-route:
+  en: e40721b57102ad0a
+  zh: 62f2df96074cdd83
+/agent-note-reasoning-translation-can-use-one-configured-model-route/problem:
+  en: dae8ec64a12146b9
+  zh: dd41945e7219218f
+/agent-note-reasoning-translation-can-use-one-configured-model-route/decision:
+  en: d52da88e898597f3
+  zh: 4de18b0fd38e1be0
+/agent-note-reasoning-translation-can-use-one-configured-model-route/alternatives-considered:
+  en: 9aaf1b408ff59cf7
+  zh: 60774c2d5def885b
+/agent-note-reasoning-translation-can-use-one-configured-model-route/consequences:
+  en: 1c37adaa2cab14cb
+  zh: 736146b6e520c5b1

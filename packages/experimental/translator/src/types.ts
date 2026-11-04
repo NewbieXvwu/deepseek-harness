@@ -4,11 +4,14 @@ import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 /** Anonymous endpoint protocol selected for one translation. */
 export type AnonymousTranslationProvider = 'google' | 'bing' | 'deeplx'
 
-/** Explicit native DeepSeek credential route selected for paid translation. */
-export type PaidTranslationProvider = 'deepseek-account' | 'deepseek-official'
+/** Built-in DeepSeek credential routes, admitted by their exact `deepseek-flash` catalog membership. */
+export type NativeTranslationProvider = 'deepseek-account' | 'deepseek-official'
 
-/** Explicit anonymous endpoint or native paid model route. */
-export type TranslationProvider = AnonymousTranslationProvider | PaidTranslationProvider
+/** Model routes that translate a fragment: the built-in DeepSeek routes and one configured provider and model. */
+export type ModelTranslationProvider = NativeTranslationProvider | 'llm'
+
+/** Explicit anonymous endpoint or model route. */
+export type TranslationProvider = AnonymousTranslationProvider | ModelTranslationProvider
 
 /** Text and provider-supported language tags supplied by a consumer. */
 export interface TranslationRequest {
@@ -39,15 +42,22 @@ interface TranslationSpecFields {
 /** Fully resolved anonymous endpoint request. */
 export interface AnonymousTranslationSpec extends TranslationSpecFields { readonly provider: AnonymousTranslationProvider }
 
-/** Fully resolved native request with its required durable Session identity. */
-export interface PaidTranslationSpec extends TranslationSpecFields {
-  readonly provider: PaidTranslationProvider
+/** Fully resolved built-in DeepSeek request with its required durable Session identity. */
+export interface NativeTranslationSpec extends TranslationSpecFields {
+  readonly provider: NativeTranslationProvider
   /** Existing durable Session; required before paid request admission. */
   readonly sessionId: SessionId
 }
 
+/** Fully resolved request on the configured provider and model route. */
+export interface ModelTranslationSpec extends TranslationSpecFields {
+  readonly provider: 'llm'
+  /** Existing durable Session; required before model request admission. */
+  readonly sessionId: SessionId
+}
+
 /** Fully resolved routing and language choices for one provider request. */
-export type TranslationSpec = AnonymousTranslationSpec | PaidTranslationSpec
+export type TranslationSpec = AnonymousTranslationSpec | NativeTranslationSpec | ModelTranslationSpec
 
 /** Provider-independent identity of one reusable translation. */
 export interface TranslationIdentity {

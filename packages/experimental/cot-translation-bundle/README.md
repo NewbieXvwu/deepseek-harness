@@ -29,7 +29,7 @@ Open Plugins and enable Reasoning translation in the Official group. Open its de
 
 Expand a Think row to start translation. The row translates completed paragraphs and request-sized prefixes of long streaming paragraphs while retaining the unfinished tail. View original in the translation toolbar switches the expanded body to the source; View translation switches it back. A failed translation leaves the original visible and offers Retry. Disabling the bundle removes its controls and cancels pending calls. Successful translations remain saved in the Session and are reused when the same request is reopened, the page reloads, or the Host restarts.
 
-The selected service receives the expanded reasoning, which can contain private code and conversation details. Google, Bing, and DeepLX send source text in POST request bodies. None of the three requires a translation login or an API key managed by dsh, and none guarantees availability or free quotas; a DeepLX request reaches only the address set in this panel or by the deployment. Eligible native `deepseek-flash` routes appear as explicit paid choices using the configured DeepSeek Account or Official API credentials. Each uncached fragment issues one independent query with thinking disabled. Reopening reuses saved results; changing provider, language, source or recipe may require another billed query. The model ID is matched without a version number, and pi-ai routes are excluded. Provider failure never sends the text to another service automatically.
+The selected service receives the expanded reasoning, which can contain private code and conversation details. Google, Bing, and DeepLX send source text in POST request bodies. None of the three requires a translation login or an API key managed by dsh, and none guarantees availability or free quotas; a DeepLX request reaches only the address set in this panel or by the deployment. Eligible native `deepseek-flash` routes appear as explicit paid choices using the configured DeepSeek Account or Official API credentials, and a provider and model configured on the Models page appear as a third paid choice once its credential and catalog entry resolve. Each uncached fragment issues one independent query, with thinking disabled where the model can disable it. Reopening reuses saved results; changing provider, language, source or recipe may require another billed query, and a model that keeps thinking bills reasoning the reader never sees. Provider failure never sends the text to another service automatically.
 
 -----
 
@@ -55,7 +55,7 @@ The bundle patch inserts `translator` and `cot-translation`, selecting Bing and 
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through optional independent paid Flash requests and normal Session activation on cache misses; the translator owns translation prompts, and the Session's preset owns startup context.
+Indirectly, through optional independent paid model requests and normal Session activation on cache misses; the translator owns translation prompts, and the Session's preset owns startup context.
 
 #### KV Cache effect
 

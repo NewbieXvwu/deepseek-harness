@@ -18,7 +18,7 @@ The original Session keeps `plugin:translator/request`, the [shared translation 
 
 **Reuse the conversation's model call.** Its history, model and thinking settings are unrelated to a translation fragment, and session-log delivery could transmit more than the selected text. A fresh native Flash call makes these choices explicit.
 
-**Offer every model or version label.** This requires additional receiver and billing decisions. The stable `deepseek-flash` ID supports future versions while preserving the requested built-in route restriction.
+**Offer every model or version label.** This requires additional receiver and billing decisions. The stable `deepseek-flash` ID supports future versions while preserving the requested built-in route restriction. [Reasoning translation through one configured model route](../feature/2026-11-03-configured-model-reasoning-translation.md) later replaced this rejection for a single explicitly chosen provider and model, once the Models page made the receiver a named deployment choice; the built-in identity rules decided above remain.
 
 **Replace the original assistant output.** Translated text is retained separately as a shared result record; original reasoning remains the source of main model history.
 

@@ -250,6 +250,23 @@ describe('configured model translation', () => {
     expect(b.requests[1]!.body).toMatchObject({ model: LLM_FIXTURE_MODELS.lowOnly })
   })
 
+  it('retargets the stored route through a live configuration change without remounting', async () => {
+    const b = await mount(LLM_FIXTURE_MODELS.off)
+    expect(await b.translate('llm')).toBe('翻译结果')
+    const entry = [...b.ctx.loader.entries()].find(row => row.options.id === 'translator')
+    if (entry?.fiber === undefined) throw new Error('Missing translator Loader row')
+    await entry.update({ config: { ...route(LLM_FIXTURE_MODELS.lowOnly) } })
+    await b.ctx.loader.await()
+    expect([...b.ctx.loader.entries()].find(row => row.options.id === 'translator')?.fiber).toBe(entry.fiber)
+    expect(await b.translate('llm')).toBe('翻译结果')
+    expect(b.requests).toHaveLength(2)
+    expect(b.requests[1]!.body).toMatchObject({ model: LLM_FIXTURE_MODELS.lowOnly, thinking: { type: 'enabled' } })
+    const saved = b.session!.snapshotEvents().filter(event => pluginRecordOf(event)?.type === 'plugin:translator/request')
+    expect(saved).toHaveLength(2)
+    expect(saved[0]).toMatchObject({ data: { recipe: `["${LLM_FIXTURE_PROVIDER}","${LLM_FIXTURE_MODELS.off}","literal-fragment-v1",8192]` } })
+    expect(saved[1]).toMatchObject({ data: { recipe: `["${LLM_FIXTURE_PROVIDER}","${LLM_FIXTURE_MODELS.lowOnly}","literal-fragment-v1",8192]` } })
+  })
+
   it('normalizes the model deadline and preserves caller cancellation', async () => {
     const expired = await mount(LLM_FIXTURE_MODELS.off, { llmTimeoutMs: 40 }, {
       reply: (response) => { response.write(sse(replyEvents().slice(0, 2))) } })

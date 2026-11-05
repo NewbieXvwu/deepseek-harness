@@ -52,6 +52,8 @@ describe('chatjimmy translator', () => {
     [`<<<你好，世界。>>${stats()}`, '你好，世界。'],
     [`Translation: 你好，世界。${stats()}`, '你好，世界。'],
     [`译文：你好，世界。${stats()}`, '你好，世界。'],
+    [`简体中文：\n你好，世界。${stats()}`, '你好，世界。'],
+    [`翻译：简体中文：你好，世界。${stats()}`, '你好，世界。'],
     ['你好，世界。<|stats|>not json<|/stats|>', '你好，世界。'],
     ['你好，世界。<|stats|>null<|/stats|>', '你好，世界。'],
     ['你好，世界。<|stats|>[1]<|/stats|>', '你好，世界。'],
@@ -66,6 +68,7 @@ describe('chatjimmy translator', () => {
   it.each([
     ['', 'an empty body'],
     [` ${stats()}`, 'a reply with no translation'],
+    [`翻译：\n${stats()}`, 'a reply that is only a language label'],
     [`你好，世界。${stats('length')}`, 'a reply telemetry says was cut short'],
     [`你好，世界。 ${stats()}\n<|stats|>tail`, 'a residual telemetry marker'],
     [`你好，世界。<|stats|>{"done_reason":"stop"}<|/stats|>${stats()}`, 'two telemetry trailers'],

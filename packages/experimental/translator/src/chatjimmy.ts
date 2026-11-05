@@ -5,11 +5,11 @@ import type { AnonymousTranslationSpec } from './types.ts'
 import { TranslationError } from './error.ts'
 
 /**
- * Prompt and protocol revision retained in durable translation identities.
- * Bump it whenever the prompt below or the request envelope changes, so cached results from the old wording are not
- * served after a tuning change.
+ * Prompt, unwrapping and protocol revision retained in durable translation identities.
+ * Bump it whenever the prompt below, the accepted reply shapes or the request envelope changes, so cached results
+ * written under the old semantics are not served after a tuning change.
  */
-export const CHATJIMMY_REVISION = 'chatjimmy-literal-v2'
+export const CHATJIMMY_REVISION = 'chatjimmy-literal-v3'
 
 /** Naming the script, not just the language, is what keeps this model out of Traditional glyphs. */
 const SIMPLIFIED_CHINESE_NAME = 'Simplified Chinese (简体中文)'
@@ -45,8 +45,11 @@ export const CHATJIMMY_SYSTEM = 'You are a translation engine. Output only the t
  * them in English, copies the prompt's own markers into its reply, and drifts between Simplified and Traditional
  * glyphs. Naming the script removes the glyph drift, and the closing `Translation:` cue is what stops it from
  * answering the fragment: 65 of 71 adversarial sentences usable against 53 for the plain one-line instruction the
- * other anonymous routes use, and 37 for a few-shot prefix. Re-measure through tests/chatjimmy-quality.e2e.ts before
- * changing this wording, and bump CHATJIMMY_REVISION so saved results are not reused under new semantics.
+ * other anonymous routes use, and 37 for a few-shot prefix. Later rounds measured worse, not better: adding a
+ * never-respond or no-label prohibition echoed the markers in 4 to 10 of 14 to 28 replies, and a field-label framing
+ * that drops the leading imperative echoed in 6 and 9 of 18, because naming a form teaches it. Re-measure through
+ * tests/chatjimmy-quality.e2e.ts before changing this wording, and bump CHATJIMMY_REVISION so saved results are not
+ * reused under new semantics.
  * [Tuning decision](../../../../.agents/notes/implemented/feature/2026-11-04-keyless-small-model-translation-route.md)
  * @param spec - resolved text and language choices.
  * @returns system instruction and user turn carrying the fragment between the markers.
@@ -105,12 +108,27 @@ const WRAPPER_PAIRS: readonly (readonly [string, string])[] =
   [['《', '》'], ['「', '」'], ['“', '”'], ['‘', '’'], ['（', '）'], ['【', '】'], ['(', ')'], ['[', ']']]
 
 /**
+ * Labels this model writes ahead of the translation, naming the destination language or script instead of using it.
+ * Stripping is a deterministic repair: each label ends in a colon and the text after it stands alone.
+ */
+const LABEL_WORDS = ['译文', '译文如下', '翻译', '翻译结果', '以下是', '中文', '英文', '汉语', '简体中文', '繁體中文',
+  '中文（简体中文）', '中文\\(简体中文\\)', 'Simplified Chinese', 'Traditional Chinese', 'Chinese', 'English', 'Translation']
+
+const LABEL_PREFIX = new RegExp(`^(?:${LABEL_WORDS.join('|')})\\s*[:：]\\s*`, 'u')
+
+/**
  * Remove the wrapper noise this model adds around an otherwise correct translation.
  * @param text - reply text with telemetry already removed.
- * @returns the translation itself, with at most three nested wrapper layers dropped.
+ * @returns the translation itself, with at most two label prefixes and three nested wrapper layers dropped.
  */
 function unwrap(text: string): string {
-  let out = text.trim().replace(/^(?:译文|翻译|translation)\s*[:：]\s*/iu, '').trim()
+  let out = text.trim()
+  // Two passes cover a stacked pair such as `翻译：简体中文：…`.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const stripped = out.replace(LABEL_PREFIX, '').trim()
+    if (stripped === out) break
+    out = stripped
+  }
   for (let depth = 0; depth < 3; depth += 1) {
     const stripped = out.replace(OPENING, '').replace(CLOSING, '').trim()
     const pair = WRAPPER_PAIRS.find(([opening, closing]) => stripped.startsWith(opening) && stripped.endsWith(closing)

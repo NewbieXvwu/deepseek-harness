@@ -149,7 +149,7 @@ it.skipIf(MODE === 'record')('translates one reasoning fragment through the Chat
     data: { provider: 'chatjimmy', text: ORIGINAL, targetLanguage: 'zh', sourceLanguage: 'auto' } })
   const stored = pluginRecordOf(savedRecords[0]!)?.data as { recipe?: unknown }
   const identity = JSON.parse(String(stored.recipe)) as [string, string, string, number, number]
-  expect(identity[0]).toBe('chatjimmy-literal-v2')
+  expect(identity[0]).toBe('chatjimmy-literal-v3')
   expect(identity[1]).toHaveLength(64)
   expect(identity.slice(2)).toEqual(['llama3.1-8B', 1, 0])
   expect(savedRecords[1]).toMatchObject({ type: 'plugin:translator/result', ignorable: true,
